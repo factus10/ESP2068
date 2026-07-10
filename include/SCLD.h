@@ -69,7 +69,14 @@ public:
 
     // Decoded fields of displayControl, kept in sync by OUT_FF(). See the
     // plan doc's "Port 0xFF" table for the authoritative bit layout.
-    static uint8_t videoMode;      // bits 2..0 : 000/001/010/110 defined, else undefined
+    //
+    // videoMode's three bits are independent flags, not a mutually-exclusive
+    // enum (corrected 2026-07-10 against a real TS2068 reference library —
+    // see the plan doc): bit 0 = second display file, bit 1 = hi-color, bit
+    // 2 = 64-column/hi-res. Hi-res is bit 2 ALONE (0x04) — earlier drafts of
+    // the plan doc said "110"/0x06, which was wrong. Combinations with bit 2
+    // set are undocumented; treat as unsupported.
+    static uint8_t videoMode;      // bits 2..0 : independent flags, see above
     static uint8_t hiresInkPaper;  // bits 5..3 : hi-res mode's global ink/paper pair
     static bool    intInhibit;     // bit 6     : 1 = 1/60s timer interrupt disabled
     static bool    exromSelect;    // bit 7     : 0 = DOCK, 1 = EXROM

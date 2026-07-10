@@ -22,12 +22,16 @@ Everything routes through two I/O ports. Both are fully decoded on the 2068, unl
 
 ### Port 0xFF — Display Enhancement Control (power-on value 0x00)
 
+**Corrected 2026-07-10** against a reference library of TS2068 documentation and ROM disassembly (`/Users/david/Documents/Projects/TS2068 Ref Library/docs/`, three independent files agree — `ts2068_video_and_cartridges.md`, `ts2068_quick_reference.md`, `ts2068_memory_map.md`). v0.1 of this doc modeled bits 2..0 as a single 3-bit enum ("110 = hi-res"); they are actually **three independent flag bits**, not a mutually-exclusive mode number — the reference library explicitly documents a `$01+$02` combination ("dual-file + hi-color"). The bit *positions* below are otherwise as v0.1 had them (`00`=standard, `01`=dual-file, `10`=hi-color all still land on the same bit values); only bit 2's value changes, from `110` (0x06) to `100` (0x04) alone.
+
 | Bits | Field | Values |
 |------|-------|--------|
-| 2..0 | Video mode | 000 = primary DFILE (standard 256×192 attribute screen). 001 = secondary DFILE (same format, screen file at +0x2000 base). 010 = extended colour (256×192 pixels, 32×192 colour — attributes come from the second display file). 110 = hi-res (512×192 monochrome, 64-column). Other = undefined. |
-| 5..3 | Hi-res ink/paper | Global colour pair for 512-mode. 000 black/white, 001 blue/yellow, 010 red/cyan, 011 magenta/green, 100 green/magenta, 101 cyan/red, 110 yellow/blue, 111 white/black. |
-| 6 | Interrupt inhibit | 1 = disable the 1/60s timer interrupt. |
-| 7 | EXROM/DOCK select | 0 = DOCK, 1 = EXROM. Selects which alternative bank the 0xF4 chunk bits point at. |
+| 0 | Second display file | 1 = display relocates to the second display file at $6000 (page-flip / dual-file). |
+| 1 | Hi-color (extended colour) | 1 = 256×192 pixels, one attribute byte per pixel *pair* (finer than the standard 32×24 cell grid) — attributes come from the second display file. |
+| 2 | 64-column / hi-res | 1 = 512×192 monochrome, 64-column. **This is bit 2 alone (0x04), not bits `110`/0x06 as v0.1 stated** — confirmed by three independent sources, see above. Combines with bit 0 or bit 1 is undocumented in the reference library; treat as unsupported until proven otherwise. |
+| 5..3 | Hi-res ink/paper | Global colour pair for 512-mode. 000 black/white, 001 blue/yellow, 010 red/cyan, 011 magenta/green, 100 green/magenta, 101 cyan/red, 110 yellow/blue, 111 white/black. (The reference library describes this more vaguely as "paper color, with ink from individual pixel pairs" — read as consistent with this fixed-pair table, not contradicting it: bits 5..3 select one of 8 fixed ink/paper pairs, and each source pixel bit picks which of the pair to show.) |
+| 6 | Interrupt inhibit | 1 = disable the 1/60s timer interrupt (documented elsewhere in the reference library as "disable keyboard interrupt" — same interrupt, since the ROM's keyboard scan runs from the periodic timer handler; not a conflict). |
+| 7 | EXROM/DOCK select | 0 = DOCK, 1 = EXROM. Selects which alternative bank the 0xF4 chunk bits point at. Reference library confirms: must be preserved by software, matching this doc's original framing. |
 
 Reading 0xFF returns the last value written (not screen/attribute data as on the Spectrum). This breaks Arkanoid-class floating-bus tricks; not a concern here.
 
@@ -73,13 +77,17 @@ Writes to HOME-ROM chunks and to DOCK/EXROM chunks must be masked (they are read
 
 ## Display
 
+**Implemented (2026-07-10), first increment:** see `PLAN.md`'s Phase 2 slice 2 writeup for the full breakdown and honest limits. Summary: the fixed-512-column physical VGA mode is real (`src/ESP32Lib/VGA/VGA.h`'s `VgaMode_512x480_60_TS2068`, computed via the actual APLL clock-divider algorithm, not bench-verified yet), and the byte-to-pixel expansion math both modes need is real and tested (`include/SCLDVideo.h`/`src/SCLDVideo.cpp`). What's *not* yet done is wiring that math into `Video.cpp`'s actual live renderer — see below for why that's a separate, larger piece of work than it first looks like.
+
 The build boots into one fixed 512-column-wide physical VGA mode always (see the verified finding above — ESPectrum has no precedent for switching `vga.init()`/framebuffer layout mid-session, so the port doesn't add one). The 0xFF video-mode bits select which renderer fills that fixed-width buffer each frame, not the VGA timing itself.
 
-Standard mode (0xFF bits = 000/001) is nearly identical to the Spectrum's attribute renderer already in `Video.cpp` — one attribute byte drives eight pixels through the `AluByte[nibble][att]` lookup. `MainScreen` mostly works; the screen-base pointer follows the primary/secondary DFILE select and the `grmem` selection already has the shape for this (it is how ESPectrum picks the shadow screen via `videoLatch`). Because the physical mode is fixed at 512 columns, this renderer now needs to double each output pixel horizontally to fill the line — a change `AluByte` itself doesn't need, done in the write-to-framebuffer step around it.
+**New finding while building this (2026-07-10):** `VIDEO::Draw`/`VIDEO::Draw_Opcode` aren't selected once and left alone — they're self-retargeting function pointers that the existing renderers (`MainScreen`, `MainScreen_2A3`, etc.) repoint to each other as `CPU::tstates` crosses scanline/frame boundaries. That's how ESPectrum gets cycle-accurate, interleaved-with-CPU-execution rendering without a separate video thread. A TS2068 renderer needs its own version of that state machine, not just a new inner pixel loop — this is more integration work than "write a 512×1bpp loop," and is why this increment stopped at the pixel-expansion math (host-testable, verifiable without hardware) rather than pushing into that state machine (not verifiable without a monitor, and easy to get subtly wrong in ways that only show up as a scrambled picture).
 
-Extended colour mode (010) is still 256 source-wide. Attributes come from the second display file at +0x2000 rather than from the interleaved-thirds Spectrum layout, giving 32×192 colour resolution. New attribute-fetch addressing, same pixel-doubling as standard mode.
+Standard mode (0xFF bits 2..0 = 0x00, or 0x01 for the second-display-file variant) is nearly identical to the Spectrum's attribute renderer already in `Video.cpp` — one attribute byte drives eight pixels through the `AluByte[nibble][att]` lookup. `MainScreen` mostly works; the screen-base pointer follows the primary/secondary DFILE select and the `grmem` selection already has the shape for this (it is how ESPectrum picks the shadow screen via `videoLatch`). Because the physical mode is fixed at 512 columns, this renderer now needs to double each output pixel horizontally to fill the line — a change `AluByte` itself doesn't need, done in the write-to-framebuffer step around it.
 
-Hi-res mode (110) is the one genuinely new renderer. 512×192, one bit per source pixel, two global colours from 0xFF bits 5..3. No attribute bytes. DFILE1 supplies even columns, DFILE2 (at +0x2000) supplies odd columns; the two are interleaved pixel by pixel across the 64-column line. The inner loop reads a bitmap byte and expands it to 8 one-bit pixels against the fixed ink/paper pair — simpler than the attribute loop it sits next to, and it writes 1:1 into the fixed 512-wide buffer (no doubling), but it cannot reuse the `AluByte` path. Framebuffer is still one output byte per pixel; 1bpp is the source, not the stored form.
+Extended colour mode (bit 1, 0x02) is still 256 source-wide. Attributes come from the second display file at +0x2000 rather than from the interleaved-thirds Spectrum layout, giving 32×192 colour resolution. New attribute-fetch addressing, same pixel-doubling as standard mode.
+
+Hi-res mode (bit 2, 0x04 — corrected from v0.1's "110"/0x06, see the port 0xFF table above) is the one genuinely new renderer. 512×192, one bit per source pixel, two global colours from 0xFF bits 5..3. No attribute bytes. DFILE1 supplies even columns, DFILE2 (at +0x2000) supplies odd columns; the two are interleaved pixel by pixel across the 64-column line. The inner loop reads a bitmap byte and expands it to 8 one-bit pixels against the fixed ink/paper pair — simpler than the attribute loop it sits next to, and it writes 1:1 into the fixed 512-wide buffer (no doubling), but it cannot reuse the `AluByte` path. Framebuffer is still one output byte per pixel; 1bpp is the source, not the stored form.
 
 ## Timing profile
 
@@ -98,7 +106,7 @@ The 2068 is a 60Hz machine (1/60s interrupt). Line and frame T-state counts diff
 The four pieces share almost no code surface, which is what makes this splittable across the distributed team.
 
 1. **MMU + memory core.** The 8-slot refactor of the six `Z80Ops::*_std` functions in `src/CPU.cpp` (`peek8`, `poke8`, `peek16`, `poke16`, `fetchOpcode`, `addressOnBus`), the `memChunk[]` model in MemESP, a new per-chunk read-only flag (there is no existing generalized one — see verified findings), and the 0xF4/0xFF port handlers. Critical path; everything else assumes its interface. Wants the most Z80/C-comfortable person. This is the one place a bug is subtle rather than visible.
-2. **Hi-res renderer + VGA mode table.** New 512×1bpp loop in `Video.cpp`, pixel-doubling added to the standard/extended-colour renderers so they fill the same fixed 512-wide buffer, one new hand-tuned `vidmodes[]` row (timing constants, not just `hRes` — see verified findings), the hi-res colour-pair decode. Fully independent; build against a memory stub before slice 1 lands. Include monitor bench time for the new timing row, not just arithmetic derivation.
+2. **Hi-res renderer + VGA mode table.** `vidmodes[]` row (done, computed via APLL algorithm, needs bench time) and the byte-to-pixel expansion math (done, tested — `SCLDVideo.h`/`.cpp`) landed. Still open: the actual 512×1bpp loop wired into `Video.cpp`'s `Draw`-function-pointer state machine, pixel-doubling wired into the standard/extended-colour renderers, and — the real gate on all of it — a monitor to bench-verify the timing row against.
 3. **Cartridge loader.** `.DCK` parse (done), LROS autostart via the .DCK's own chunk-presence bits rather than `check_trdos`-style PC-watching (done, see "Cartridge loading" above for the correction), AROS autostart (not done — needs a working System ROM first). Depends on slice 1's interface, not its internals; was specced and built in parallel with slice 1's later increments.
 4. **DOCK image corpus + test harness.** Real `.DCK` dumps, a known-good boot set, per-mode display test cards. Unblocks testing for the other three; without it they code blind. Likely already partly in the team's archives.
 
@@ -118,5 +126,5 @@ The `memChunk[]` contract is what every slice codes against: the 8-entry array s
 ## Open questions worth a decision
 
 - Which SCLD variant is the reference: TS2068 (60Hz, NTSC timing) is the target. TC2068 (50Hz PAL) is a timing-profile variant that costs little to add once the 60Hz path works.
-- Extended colour mode (010): ship in v1 or defer? Standard + hi-res cover most native software; extended colour is a smaller library.
+- Extended colour mode (bit 1, 0x02): ship in v1 or defer? Standard + hi-res cover most native software; extended colour is a smaller library.
 - Board: cheap nopsram (TTGo VGA32 class) is capability-sufficient. Buy one PSRAM board for the double-buffering bench test rather than committing the whole team to PSRAM.

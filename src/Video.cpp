@@ -186,7 +186,18 @@ void VIDEO::vgataskinit(void *unused) {
 
     uint8_t Mode;
 
-    if (Config::videomode == 1) {
+    if (Config::arch == "2068") {
+
+        // TS2068 always uses its one fixed 512-active-column mode (see
+        // TS2068-ESPECTRUM-PORT-PLAN.md's "Display" section) -- it does
+        // not participate in the aspect-ratio/scanlines/CRT selection
+        // below, which is Spectrum/TK/Pentagon-specific.
+        Mode = SCLD_VGA_MODE_INDEX;
+
+        OSD::scrW = vidmodes[Mode][vmodeproperties::hRes];
+        OSD::scrH = vidmodes[Mode][vmodeproperties::vRes] / vidmodes[Mode][vmodeproperties::vDiv];
+
+    } else if (Config::videomode == 1) {
 
         char c_arch = Config::arch[0];
 
@@ -254,8 +265,13 @@ TaskHandle_t VIDEO::videoTaskHandle;
 
 void VIDEO::Init() {
 
-    if (Config::videomode) {
+    if (Config::arch == "2068" || Config::videomode) {
 
+        // TS2068 always goes through the interrupt-driven task path
+        // (vgataskinit(), which picks its own fixed mode regardless of
+        // Config::videomode) -- the non-interrupt branch below only
+        // offers the shared/generic 256- and 360-wide modes (indices
+        // 0-3), never the 512-wide mode TS2068 needs.
         // xTaskCreatePinnedToCore(&VIDEO::vgataskinit, "videoTask", 1024, NULL, configMAX_PRIORITIES - 2, &videoTaskHandle, 1);
         xTaskCreatePinnedToCore(&VIDEO::vgataskinit, "videoTask", 1024, NULL, 5, &videoTaskHandle, 1);
 

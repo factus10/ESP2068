@@ -71,16 +71,50 @@ enum vmodeproperties {
 #define CrtMode_352x272_TV_PENTAGON { 22, 32, 42, 352, 18, 3, 19, 272, 1, 1, 1, 133,235,6,14,7,14 } // 15234 / 48.828125
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TS2068 MODE (ESP2068 port — no upstream equivalent)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// One fixed 512-active-column physical mode, used for every TS2068 video
+// mode (see TS2068-ESPECTRUM-PORT-PLAN.md's "Display" section — the 0xFF
+// video-mode bits select a renderer, not the VGA timing itself). 512 active
+// columns to natively fit hi-res mode's 512x192; standard/hi-color modes
+// pixel-double into the same buffer.
+//
+// Computed (2026-07-10), not bench-verified on a real monitor: horizontal
+// porch/sync/back scaled x1.6 from the proven VgaMode_320x240_60_TK
+// (320*1.6=512 exactly, so the two modes share the same ~31425Hz horizontal
+// frequency — same line rate as an already-working mode, just more active
+// pixels per line). Vertical timing (10,2,33,480,vDiv=2) copied unchanged
+// from the same mode: 480/vDiv=2 gives a 240-line framebuffer, close to
+// TS2068's real 24-top-border+192-active+24-bottom-border shape. Vertical
+// frequency targets that same proven 59.856887Hz rather than the ~60.11Hz
+// separately derived from TSTATES_PER_FRAME_2068 (cpuESP.h) — that constant
+// governs CPU/audio pacing, a different clock domain in this driver
+// architecture, unaffected by the VGA output's own refresh rate; reusing an
+// already-monitor-proven rate here is lower-risk than an unproven one.
+// r1sdm0/r1sdm1/r1sdm2/r0sdm2 exactly match VgaMode_320x240_60_TK's — same
+// VCO frequency family, just a smaller odiv (3 vs 6) for the ~1.6x higher
+// pixel clock; r1odiv/r0odiv computed via the exact APLLCalc algorithm in
+// tools/VideoModeTool.py (0.0000% frequency error against the 2x-pixel-clock
+// target for REV1). PLAN.md's risk register already flags this as needing
+// real bench time before trusting it on hardware — this is a mathematically
+// self-consistent starting point for that bench pass, not a substitute for it.
+#define VgaMode_512x480_60_TS2068 { 13, 77, 38, 512, 10, 2, 33, 480, 2, 1, 1, 83,14,6,3,6,3 }
 
-const unsigned short int vidmodes[29][17]={
+const unsigned short int vidmodes[30][17]={
 	VgaMode_320x240, VgaMode_320x240_scanlines, VgaMode_360x200, VgaMode_360x200_scanlines,
 	VgaMode_320x240_50_48, VgaMode_320x240_50_48_scanlines, VgaMode_360x200_50_48,  VgaMode_360x200_50_48_scanlines,
 	VgaMode_320x240_50_TK, VgaMode_320x240_50_TK_scanlines, VgaMode_360x200_50_TK,  VgaMode_360x200_50_TK_scanlines,
 	VgaMode_320x240_60_TK, VgaMode_320x240_60_TK_scanlines, VgaMode_360x200_60_TK,  VgaMode_360x200_60_TK_scanlines,
 	VgaMode_320x240_50_128, VgaMode_320x240_50_128_scanlines, VgaMode_360x200_50_128, VgaMode_360x200_50_128_scanlines,
 	VgaMode_320x240_50_PENTAGON , VgaMode_320x240_50_PENTAGON_scanlines, VgaMode_360x200_50_PENTAGON, VgaMode_360x200_50_PENTAGON_scanlines,
-	CrtMode_352x272_TV_48 ,	CrtMode_352x272_TV_TK50 , CrtMode_352x224_TV_TK60 ,	CrtMode_352x272_TV_128,	CrtMode_352x272_TV_PENTAGON
+	CrtMode_352x272_TV_48 ,	CrtMode_352x272_TV_TK50 , CrtMode_352x224_TV_TK60 ,	CrtMode_352x272_TV_128,	CrtMode_352x272_TV_PENTAGON,
+	VgaMode_512x480_60_TS2068
 };
+
+// Index of the TS2068 mode above within vidmodes[] — SCLD_VGA_MODE_INDEX,
+// not TS2068_VGA_MODE_INDEX, to match the SCLD.h/SCLD.cpp naming this port
+// otherwise uses for everything TS2068-specific.
+#define SCLD_VGA_MODE_INDEX 29
 
 class VGA : public I2S {
 
