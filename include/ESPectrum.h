@@ -109,6 +109,21 @@ using namespace std;
 #define ESP_AUDIO_AY_DIV_PENTAGON  112
 #define ESP_AUDIO_OVERSAMPLES_DIV_PENTAGON 16
 
+// TS2068: like 48K, calcs are perfect -- TSTATES_PER_FRAME_2068 (58688,
+// cpuESP.h) factors exactly as 524 * 7 * 16, so both
+// ESP_AUDIO_AY_DIV_2068 (524*112=58688) and the final audio rate
+// (3528000Hz Z80 clock / 112 = 31500 Hz exactly) land on whole numbers,
+// same shape as the 48K/Pentagon rows above -- not a coincidence, this
+// combination was chosen (from 58688's factor set, 2^6*7*131) to match.
+#define ESP_AUDIO_OVERSAMPLES_2068 3668
+#define ESP_AUDIO_FREQ_2068 31500 // ESP_AUDIO_SAMPLES_2068 * 60,1145 frames per second = 31500 Hz
+#define ESP_AUDIO_FREQ_2068_125SPEED 39375 // 125% speed
+#define ESP_AUDIO_FREQ_2068_150SPEED 47250 // 150% speed
+#define ESP_AUDIO_SAMPLES_2068  524
+#define ESP_AUDIO_SAMPLES_DIV_2068  7
+#define ESP_AUDIO_AY_DIV_2068  112
+#define ESP_AUDIO_OVERSAMPLES_DIV_2068 16
+
 #define ESP_VOLUME_DEFAULT -8
 #define ESP_VOLUME_MAX 0
 #define ESP_VOLUME_MIN -16

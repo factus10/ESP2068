@@ -262,8 +262,43 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
                 if (Tape::tapeEarBit) data ^= 0x40;
                 return data;
             }
-            // Other TS2068 ports (AY $F5/$F6, printer $FB, etc.): not
-            // this slice's scope.
+            case 0x00F5:
+                // AY register-select ("address") port read. Confirmed
+                // against FUSE (machines/tc2068.c's
+                // tc2068_ay_registerport_read): unlike the generic AY
+                // read path (which would otherwise gate register 14 on
+                // R7's I/O-direction bit), the TS2068's select port
+                // always returns 0xff while register 14 is selected --
+                // R14 is only readable via the data port (0xF6, below).
+                // For every other register this is identical to the
+                // generic register-port read, since AySound::getRegisterData()
+                // already gates R14/R15 on the I/O-direction bits the
+                // same way FUSE's generic ay_registerport_read() does.
+                return AySound::selectedRegister == 14 ? 0xff : AySound::getRegisterData();
+            case 0x00F6:
+                // AY data port read. Confirmed against FUSE
+                // (tc2068_ay_dataport_read): unlike the plain 128K AY
+                // chip (whose data port at 0xBFFD has no read handler
+                // at all), the TS2068's data port reads back whichever
+                // register is currently selected, register 14 included
+                // -- AySound::getRegisterData() already implements the
+                // same R14-output-latch/R15-input-mode gating internally,
+                // so no extra TS2068-specific masking is needed here.
+                //
+                // Real hardware also ANDs in inverted joystick state
+                // when register 14 is selected and address bit 8
+                // (left/player-1 stick) or bit 9 (right/player-2 stick)
+                // is set on the upper address byte (Technical Manual
+                // Sec. 2.4.4/4.3; FUSE's joystick_timex_read()). This
+                // project has no Timex-joystick input source yet, so
+                // that fold is left out rather than faked -- per the
+                // real HOME ROM's STICK routine (CPL then mask), an
+                // idle/unconnected joystick ANDs in 0xff, a no-op, so
+                // omitting the fold is exactly the "no joystick" case,
+                // not an approximation of it.
+                return AySound::getRegisterData();
+            // Other TS2068 ports (printer $FB, etc.): not this slice's
+            // scope.
             default: return 0xff;
         }
     }
@@ -506,6 +541,17 @@ IRAM_ATTR void Ports::output(uint16_t address, uint8_t data) {
         switch (address & 0xFF) {
             case 0x00F4: SCLD::OUT_F4(data); return;
             case 0x00FF: SCLD::OUT_FF(data); return;
+            // AY register-select ("address") port write. Mirrors both
+            // the existing 128K path a few hundred lines below
+            // (AySound::selectedRegister = data & 0x0f) and FUSE's
+            // ay_registerport_write() -- unmodified/shared between the
+            // 128K and Timex AY tables in FUSE itself, so no
+            // TS2068-specific behavior exists here to replicate.
+            case 0x00F5: AySound::selectedRegister = data & 0x0f; return;
+            // AY data port write. Same pattern as the 128K path: pump
+            // the audio-mix buffer up to the current tstate before the
+            // register value actually changes, then write it.
+            case 0x00F6: ESPectrum::AYGetSample(); AySound::setRegisterData(data); return;
             default:     return; // other TS2068 ports: not this slice's scope
         }
     }

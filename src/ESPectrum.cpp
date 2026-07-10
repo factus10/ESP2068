@@ -832,6 +832,21 @@ void ESPectrum::setup() {
         Audio_freq[1] = ESP_AUDIO_FREQ_PENTAGON;
         Audio_freq[2] = ESP_AUDIO_FREQ_PENTAGON_125SPEED;
         Audio_freq[3] = ESP_AUDIO_FREQ_PENTAGON_150SPEED;
+    } else if (Config::arch == "2068") {
+        samplesPerFrame=ESP_AUDIO_SAMPLES_2068;
+        audioOverSampleDivider = ESP_AUDIO_OVERSAMPLES_DIV_2068;
+        audioAYDivider = ESP_AUDIO_AY_DIV_2068;
+        audioSampleDivider = ESP_AUDIO_SAMPLES_DIV_2068;
+        // TS2068's AY-3-8912 is always-present hardware, not a
+        // user-optional add-on like 48K/TK's Config::AY48 -- FUSE's
+        // machines_periph_timex() registers PERIPH_TYPE_AY_TIMEX_WITH_JOYSTICK
+        // as PERIPH_PRESENT_ALWAYS -- so this is unconditional, same as
+        // 128K/+2A/Pentagon above.
+        AY_emu = true;
+        Audio_freq[0] = ESP_AUDIO_FREQ_2068;
+        Audio_freq[1] = ESP_AUDIO_FREQ_2068;
+        Audio_freq[2] = ESP_AUDIO_FREQ_2068_125SPEED;
+        Audio_freq[3] = ESP_AUDIO_FREQ_2068_150SPEED;
     }
 
     // Create Audio task
@@ -1136,6 +1151,16 @@ void ESPectrum::reset() {
         Audio_freq[1] = ESP_AUDIO_FREQ_PENTAGON;
         Audio_freq[2] = ESP_AUDIO_FREQ_PENTAGON_125SPEED;
         Audio_freq[3] = ESP_AUDIO_FREQ_PENTAGON_150SPEED;
+    } else if (Config::arch == "2068") {
+        samplesPerFrame=ESP_AUDIO_SAMPLES_2068;
+        audioOverSampleDivider = ESP_AUDIO_OVERSAMPLES_DIV_2068;
+        audioAYDivider = ESP_AUDIO_AY_DIV_2068;
+        audioSampleDivider = ESP_AUDIO_SAMPLES_DIV_2068;
+        AY_emu = true; // always-present hardware -- see the matching branch in setup() above
+        Audio_freq[0] = ESP_AUDIO_FREQ_2068;
+        Audio_freq[1] = ESP_AUDIO_FREQ_2068;
+        Audio_freq[2] = ESP_AUDIO_FREQ_2068_125SPEED;
+        Audio_freq[3] = ESP_AUDIO_FREQ_2068_150SPEED;
     }
 
     audioCOVOXDivider = audioAYDivider;
