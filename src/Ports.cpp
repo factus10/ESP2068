@@ -225,21 +225,46 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
         switch (address & 0xFF) {
             case 0x00F4: return SCLD::IN_F4();
             case 0x00FF: return SCLD::IN_FF();
-            // Other TS2068 ports (keyboard $FE, AY $F5/$F6, etc.): not
-            // this slice's scope, stubbed below. Note for whenever the
-            // keyboard port lands: unlike 0xF4/0xFF, its upper address
-            // byte is NOT "don't care" — real keyboard-scan code does
-            // `LD A,rowmask; IN A,($FE)` (or the BC-loaded `IN r,(C)`
-            // form for faster multi-row scans, per the project owner),
-            // and the row-select value is read from that upper byte, not
-            // the low byte used for decode. Confirmed against FUSE:
-            // peripherals/ula.c's port table decodes 0xFE on the low
-            // byte only (same shape as the fix above), but
-            // `ula_read()` separately does `keyboard_read(port >> 8)` —
-            // decode and data are two different reads of the same
-            // address. Get this wrong and 0xFE will "half work": ports
-            // route correctly, but every row reads as unpressed.
-            default:     return 0xff;
+            case 0x00FE: {
+                // Keyboard matrix read. Same physical 8x5 matrix and
+                // row-select-by-upper-address-byte scheme as the
+                // Spectrum's port 0xFE below -- Ports::port[0..7] is
+                // already kept live every frame by
+                // ESPectrum::processKeyboard() regardless of
+                // Config::arch, so no separate TS2068 key-state is
+                // needed, only the row-select fold (mirrors the ULA
+                // branch's loop a few lines down). Two real differences
+                // from that Spectrum path, both confirmed against FUSE
+                // (peripherals/ula.c's machine->timex branch, which
+                // hard-codes ula_default_value = 0x5f on every 2068/TC2068
+                // port-0xFE write) and the TS2068 Technical Manual (Sec.
+                // 2.1.13.2's port FEH read table, "D7/D5 not used"): the
+                // idle default here is the fixed byte 0x5F, not the
+                // Spectrum's Issue2/3-dependent 0xff/0xbf -- there is no
+                // Issue2/3 quirk on the SCLD, bits 5 and 7 simply always
+                // read 0 -- and this port is fully low-byte decoded
+                // (matched above via `address & 0xFF`, confirmed against
+                // FUSE's `ula_ports_full_decode` table) rather than the
+                // Spectrum ULA's single-bit (A0==0) partial decode.
+                uint8_t data = 0x5f;
+                uint8_t portHigh = ~(address >> 8) & 0xff;
+                for (int row = 0, mask = 0x01; row < 8; row++, mask <<= 1) {
+                    if ((portHigh & mask) != 0)
+                        data &= port[row];
+                }
+                // Bit 6 (tape EAR in), same fold as the Spectrum path
+                // below. A no-op today: Tape::tapeEarBit only moves off
+                // its TAPEHIGH(0) default once real tape I/O is driven,
+                // and nothing drives it for arch "2068" yet (cartridges
+                // are the loading mechanism so far) -- kept for parity
+                // with FUSE's ula_read(), which applies this fold
+                // unconditionally for every machine, Timex included.
+                if (Tape::tapeEarBit) data ^= 0x40;
+                return data;
+            }
+            // Other TS2068 ports (AY $F5/$F6, printer $FB, etc.): not
+            // this slice's scope.
+            default: return 0xff;
         }
     }
 
