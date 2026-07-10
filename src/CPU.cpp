@@ -36,6 +36,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "ESPectrum.h"
 #include "MemESP.h"
 #include "SCLD.h"
+#include "DockLoader.h"
 #include "Ports.h"
 #include "ESPConfig.h"
 #include "Video.h"
@@ -187,6 +188,18 @@ void CPU::reset() {
         ESPectrum::target[1] = MICROS_PER_FRAME_2068;
         ESPectrum::target[2] = MICROS_PER_FRAME_2068_125SPEED;
         ESPectrum::target[3] = MICROS_PER_FRAME_2068_150SPEED;
+
+        // LROS-style autostart: page in whatever chunks the loaded DOCK
+        // cartridge populated before the Z80 fetches its first opcode at
+        // PC=0 (Z80::reset(), above, already set PC=0). Runs after
+        // SCLD::reset() (ESPectrum.cpp calls it ahead of CPU::reset()), so
+        // this correctly overrides the all-HOME reset state rather than
+        // being clobbered by it. See DockLoader.cpp's top comment for why
+        // this is a deliberate simplification of the real hardware's boot
+        // protocol, and what it doesn't cover (AROS, mid-session launches).
+        if (DockLoader::hasAutostart()) {
+            SCLD::OUT_F4(DockLoader::autostartMmuSelect());
+        }
     }
 
     if (Config::arch == "+2A" || Config::arch=="+3") {
