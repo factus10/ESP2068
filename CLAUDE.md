@@ -8,7 +8,7 @@ The technical design — SCLD register contract, 8-slot memory model, display mo
 
 ## Current repo state
 
-This repo currently holds planning documents only. **ESPectrum's source is not vendored in yet** — that's Phase 0 in `PLAN.md`. Until that lands, there is no `src/`, `include/`, or `platformio.ini` here; don't assume paths below exist in *this* repo until Phase 0 is marked done in `PLAN.md`. The paths and facts in this file were confirmed by cloning upstream separately during planning (2026-07-10) — re-verify anything load-bearing after vendoring, since upstream may have moved on.
+ESPectrum's full source and history are vendored in (merged from the `upstream` remote, `EremusOne/ESPectrum`, `master` branch — see Phase 0 in `PLAN.md`). `src/`, `include/`, `platformio.ini` etc. now exist at repo root alongside the planning docs. To pull upstream fixes later: `git fetch upstream && git merge upstream/master`. No TS2068-specific code has been written yet — the tree is still stock ESPectrum; slice 1 (MMU + memory core) is the first real code change, per `PLAN.md` Phase 1/2. The stock `nopsram` build has **not** been smoke-tested yet (Phase 0 step 2 in `PLAN.md` — still open).
 
 ## Upstream facts worth knowing before touching code
 
@@ -21,7 +21,7 @@ This repo currently holds planning documents only. **ESPectrum's source is not v
   - `src/Video.cpp` / `ESP32Lib/VGA/VGA.h` / `VGA6Bit.h` — display renderer and the `vidmodes[][17]` VGA timing table. `vga.init()` (which sizes the framebuffer and DMA descriptors) is called exactly once per boot, selected by `Config::arch[0]`; there is no live resolution switch anywhere in ESPectrum. The TS2068 port's resolved design is to boot into one fixed 512-column physical mode always and let the SCLD's port 0xFF video-mode bits pick which renderer fills it (see plan doc's "Display" section) — this avoids needing to invent live mode-switching.
   - `src/Ports.cpp` — I/O port dispatch. Existing Spectrum ports use partial address decoding (e.g. `(address & 0x8002) == 0`); the 2068's ports 0xFF and 0xF4 are fully decoded and the OUT handlers must match the full address, not a bitmask subset.
   - `src/Z80_JLS.cpp` `Z80::check_trdos()` — the "watch PC high byte, repoint a bank pointer, flip a flag" pattern used for TR-DOS autostart. This is the template for LROS/AROS/DOCK cartridge autostart (plan doc, Cartridge loading section).
-  - `src/Config.cpp` / `src/OSDMain.cpp` — machine-selection menu and `Config::arch` string (`"48K"`, `"128K"`, `"+2A"`, `"Pentagon"`, `"TK90X"`, `"TK95"`). A TS2068 entry adds a new arch string and a first-character case in the switches that key off `Config::arch[0]` (e.g. in `Video.cpp`'s mode-select). No existing first character collides with a `2068`-style prefix.
+  - `src/ESPConfig.cpp` (declares `class Config` in `include/ESPConfig.h` — file is `ESPConfig`, not `Config`) / `src/OSDMain.cpp` — machine-selection menu and `Config::arch` string (`"48K"`, `"128K"`, `"+2A"`, `"Pentagon"`, `"TK90X"`, `"TK95"`). A TS2068 entry adds a new arch string and a first-character case in the switches that key off `Config::arch[0]` (e.g. in `Video.cpp`'s mode-select). No existing first character collides with a `2068`-style prefix.
 
 ## Conventions for working in this repo
 
