@@ -43,6 +43,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "Ports.h"
 #include "MemESP.h"
 #include "SCLD.h"
+#include "RomLoader.h"
 #include "cpuESP.h"
 #include "Video.h"
 #include "messages.h"
@@ -715,6 +716,17 @@ void ESPectrum::setup() {
 
     MemESP::Init();
     SCLD::allocateMemory(); // TS2068 HOME ROM/RAM backing store — see SCLD.h
+
+    if (Config::arch == "2068") {
+        // Fixed conventional SD paths pending real OSD file-picker wiring
+        // (Phase 3, PLAN.md) — see RomLoader.h. Missing files are not
+        // fatal: HOME ROM stays zeroed placeholder memory (already the
+        // case since allocateMemory()), same as if nothing were loaded.
+        if (!RomLoader::loadHomeRomFromFile(RomLoader::DEFAULT_HOME_ROM_PATH))
+            printf("TS2068: no HOME ROM at %s -- running with a blank ROM\n", RomLoader::DEFAULT_HOME_ROM_PATH);
+        if (!RomLoader::loadExromFromFile(RomLoader::DEFAULT_EXROM_PATH))
+            printf("TS2068: no EXROM at %s -- EXROM chunks will read as an empty socket\n", RomLoader::DEFAULT_EXROM_PATH);
+    }
 
     // Load romset
     Config::requestMachine(Config::arch, Config::romSet);

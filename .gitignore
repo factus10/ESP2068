@@ -16,3 +16,6 @@ downloaded_fs*.bin
 /releases/**
 dependencies.lock
 build/*
+
+# Claude Code local session state (this repo, not project content)
+.claude/

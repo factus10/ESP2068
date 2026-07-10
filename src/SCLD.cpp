@@ -42,6 +42,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SCLD.h"
 #include <cstddef>
+#include <cstring>
 
 #ifdef ESP2068_HOST_TEST
 #include <cstdlib>
@@ -90,6 +91,14 @@ namespace {
 void SCLD::allocateMemory() {
     // c 0-1: HOME ROM (0x0000-0x3fff). c 2-7: HOME RAM (0x4000-0xffff).
     for (int c = 0; c < 8; c++) homeChunk[c] = scld_alloc8k();
+}
+
+bool SCLD::loadHomeRom(const uint8_t* data, size_t size) {
+    if (size != 0x4000) return false;
+    if (!homeChunk[0] || !homeChunk[1]) return false; // allocateMemory() not called yet
+    memcpy(homeChunk[0], data, 0x2000);
+    memcpy(homeChunk[1], data + 0x2000, 0x2000);
+    return true;
 }
 
 uint8_t* SCLD::homePage(int chunk) {

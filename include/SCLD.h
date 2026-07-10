@@ -31,6 +31,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #define SCLD_h
 
 #include <inttypes.h>
+#include <cstddef>
 
 // ---------------------------------------------------------------------------
 // This is the interface every port slice codes against (see
@@ -124,10 +125,19 @@ public:
     // ---- Backing-store setup and image loading ----
     // Allocates HOME ROM (16K) + HOME RAM (48K) and the shared empty-socket
     // page. Call once at startup, before the first resolveMemChunks(). HOME
-    // ROM content is zeroed (no real TS2068 ROM image is embedded in this
-    // repo — see PLAN.md's risk register on ROM/cartridge provenance);
-    // loading a real ROM image is a separate, not-yet-scoped piece of work.
+    // ROM content is zeroed until loadHomeRom() (below) is called — no real
+    // TS2068 ROM image is embedded in this repo (see PLAN.md's risk
+    // register on ROM/cartridge provenance); RomLoader.h reads one from an
+    // SD card file instead.
     static void allocateMemory();
+
+    // Copies a 16K HOME ROM image into the chunks allocateMemory() already
+    // reserved for it (chunks 0-1). `size` must be exactly 0x4000 — returns
+    // false and leaves the existing content untouched otherwise, or if
+    // allocateMemory() hasn't run yet. Ownership of `data` stays with the
+    // caller (unlike loadDockChunk()/loadExromImage() — this one copies
+    // into storage SCLD already owns, rather than adopting the pointer).
+    static bool loadHomeRom(const uint8_t* data, size_t size);
 
     // Slice 3 (cartridge loader) calls these as it parses a .DCK: point
     // chunk `chunk` at an already-loaded 8K image, RAM (writable) or ROM
