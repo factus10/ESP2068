@@ -8,7 +8,9 @@ The technical design — SCLD register contract, 8-slot memory model, display mo
 
 ## Current repo state
 
-ESPectrum's full source and history are vendored in (merged from the `upstream` remote, `EremusOne/ESPectrum`, `master` branch — see Phase 0 in `PLAN.md`). `src/`, `include/`, `platformio.ini` etc. now exist at repo root alongside the planning docs. To pull upstream fixes later: `git fetch upstream && git merge upstream/master`. No TS2068-specific code has been written yet — the tree is still stock ESPectrum; slice 1 (MMU + memory core) is the first real code change, per `PLAN.md` Phase 1/2. The stock `nopsram` build **compiles clean** (`pio run -e nopsram`, verified 2026-07-10 — see `PLAN.md` Phase 0). Flash-and-boot on real hardware is still unverified (no ESP32 board in this environment); do that on a real board before slice 1 lands, per `PLAN.md`.
+ESPectrum's full source and history are vendored in (merged from the `upstream` remote, `EremusOne/ESPectrum`, `master` branch — see Phase 0 in `PLAN.md`). `src/`, `include/`, `platformio.ini` etc. now exist at repo root alongside the planning docs. To pull upstream fixes later: `git fetch upstream && git merge upstream/master`. The stock `nopsram` build **compiles clean** (`pio run -e nopsram`, verified 2026-07-10 — see `PLAN.md` Phase 0); flash-and-boot on real hardware is still unverified (no ESP32 board in this environment) — do that on a real board before slice 1 lands.
+
+The only TS2068-specific code so far is the frozen interface header from `PLAN.md` Phase 1: [`include/SCLD.h`](include/SCLD.h) + [`src/SCLD.cpp`](src/SCLD.cpp) — the `memChunk[8]`/port 0xF4/0xFF/DFILE-base contract, stub bodies only, verified to compile and link (`pio run -e nopsram` shows `Compiling .../SCLD.o`, build still `SUCCESS`). It is not wired into `Ports::input`/`output` yet. Everything else is still stock ESPectrum; slice 1 (MMU + memory core, `src/CPU.cpp` + `include/MemESP.h`) is the next real code change, per `PLAN.md` Phase 2.
 
 ## Upstream facts worth knowing before touching code
 

@@ -12,14 +12,19 @@ Exit criteria: repo has ESPectrum's source under version control here (done), st
 
 ## Phase 1 — Freeze the interface (small, but unblocks the team)
 
-Turn the plan doc's "Interface to agree before anyone writes code" section into an actual compiling header — not just prose agreement. Concretely:
+~~Turn the plan doc's "Interface to agree before anyone writes code" section into an actual compiling header.~~ **Done (2026-07-10).** [`include/SCLD.h`](include/SCLD.h) + [`src/SCLD.cpp`](src/SCLD.cpp) added:
 
-- A header (e.g. `include/SCLD.h`) declaring: the `memChunk[8]` array, `address >> 13` chunk index, 0xF4 bit→chunk mapping, 0xFF bit-7 DOCK/EXROM toggle, the new per-chunk read-only flag, and the DFILE-base/screen-select constants for `grmem`.
-- Stub implementations (even if they just return HOME pointers unconditionally) so slices 2 and 3 can compile and link against the real interface immediately, rather than against a slice-owner's private mental model of it.
+- `mmuSelect`/`displayControl` (raw port 0xF4/0xFF values) plus `displayControl`'s decoded fields (`videoMode`, `hiresInkPaper`, `intInhibit`, `exromSelect`).
+- `memChunk[8]` / `memChunkReadOnly[8]`, `resolveMemChunks()` implementing the plan doc's resolve loop verbatim, and `homePage()`/`dockPage()`/`exromPage()` stubs named to match the plan doc's pseudocode 1:1.
+- `OUT_F4`/`IN_F4`/`OUT_FF`/`IN_FF` port handler stubs (not yet wired into `Ports::input`/`output` — that's slice 1's job in Phase 2).
+- `DFILE1_BASE`/`DFILE2_BASE` constants, with a comment explicitly declining to pick a single "use secondary DFILE" toggle, since mode 010 needs both DFILEs at once — that decision is left to slice 2, not baked in here.
+- Two extra write-protect call sites found while grounding the header against the real (now-vendored) source, beyond the one `CPU.cpp` call site already known: `MemESP::writebyte`/`writeword` (in `include/MemESP.h`) is a *second*, independent poke path — used by `Snapshot.cpp` and `Tape.cpp` for direct memory pokes — with its own different hardcoded check (`page == pagingmode2A3`, not `page == 0`). Slice 1 needs to repoint both paths at `memChunkReadOnly[]`, not just the CPU hot path. Noted in `SCLD.h`'s comments so it doesn't get missed.
 
-This is intentionally small — a day, not a week — but everything downstream assumes it, so it goes first and gets explicit sign-off from whoever owns slice 1 before slices 2–3 start building on top of it.
+Verified compiling for real: `pio run -e nopsram` shows `Compiling .pio/build/nopsram/src/SCLD.o` and the env still builds `SUCCESS` (firmware size unchanged from the Phase 0 baseline — expected, since nothing references the new symbols yet and the linker garbage-collects the unused section). `src/CMakeLists.txt` globs all of `src/*.*`, so any new `.cpp` here is picked up automatically without touching the build config.
 
-Exit criteria: `SCLD.h` exists, compiles, and is reviewed/agreed by whoever owns slice 1 (the 8-slot MMU is the one place the interface has to be exactly right).
+Not yet done: explicit sign-off from whoever ends up owning slice 1 — this header is a proposal until a human reviews it, not a rubber stamp because it compiles.
+
+Exit criteria: `SCLD.h` exists (done), compiles (done, verified above), and is reviewed/agreed by whoever owns slice 1 (open — needs a human, not just a green build).
 
 ## Phase 2 — Four slices
 
