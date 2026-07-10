@@ -54,6 +54,25 @@ mid-session, check_trdos-style PC watch (nothing to watch for yet without
 a real EXROM image with a "launch cartridge" entry point). Revisit both
 once those exist.
 
+Context for whenever AROS autostart IS attempted (as told directly by
+the project owner, 2026-07-10 — not yet independently located in the
+disassembly despite a search of the HOME ROM text for SYSCON/DOCK/
+ARSFLG scan logic, so treat as reliable but not yet self-verified):
+real HOME ROM init scans the DOCK connector and detects LROS vs AROS.
+For AROS specifically, it jumps directly to the address the cartridge
+specifies — but an AROS cartridge doesn't contain a real reset handler
+at address 0 (no DI, etc.), so it can't safely take a RST 0. When RST 0
+fires while the AROS cartridge is paged in, the hardware pages HOME ROM
+back in to handle it properly, and the whole detect-and-jump sequence
+runs again. This is what lets an AROS-style ROM replacement bootstrap
+with minimal hardware engineering: it doesn't need its own complete RST
+vector table, HOME ROM keeps catching RST 0 for it. If this port ever
+emulates a real HOME-ROM-driven boot (rather than DockLoader computing
+the jump itself, as it does now), this loop is what needs replicating —
+and check_trdos-style PC watching (deliberately not built above,
+because LROS doesn't need it) becomes directly relevant for it, since
+RST 0 can fire at any point, not just at boot.
+
 Based on ESPectrum, a Sinclair ZX Spectrum emulator for Espressif ESP32 SoC
 Copyright (c) 2023-2025 Víctor Iborra [Eremus] and 2023 David Crespo [dcrespo3d]
 https://github.com/EremusOne/ESPectrum
