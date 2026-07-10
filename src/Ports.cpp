@@ -37,6 +37,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "ESPectrum.h"
 #include "Z80_JLS/z80.h"
 #include "MemESP.h"
+#include "SCLD.h"
 #include "Video.h"
 #include "AySound.h"
 #include "Tape.h"
@@ -201,6 +202,19 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
     p_states = CPU::tstates;
 
     VIDEO::Draw(1, (Z80Ops::is48 || Z80Ops::is128) && MemESP::ramContended[rambank]); // I/O Contention (Early)
+
+    // TS2068 (SCLD): fully decoded ports, checked before any of the
+    // Spectrum's partial-decode branches below. This matters concretely for
+    // 0xF4 (0x00F4 & 0x0001 == 0) — it would otherwise be wrongly caught by
+    // the "ULA PORT" even-address check just below.
+    if (Z80Ops::is2068) {
+        VIDEO::Draw(3, false); // no I/O contention on the SCLD
+        switch (address) {
+            case 0x00F4: return SCLD::IN_F4();
+            case 0x00FF: return SCLD::IN_FF();
+            default:     return 0xff; // other TS2068 ports: not this slice's scope
+        }
+    }
 
     // ULA PORT
     if ((address & 0x0001) == 0) {
@@ -431,6 +445,18 @@ IRAM_ATTR void Ports::output(uint16_t address, uint8_t data) {
     p_states = CPU::tstates;
 
     VIDEO::Draw(1, (Z80Ops::is48 || Z80Ops::is128) && MemESP::ramContended[rambank]); // I/O Contention (Early)
+
+    // TS2068 (SCLD): fully decoded ports, checked before any of the
+    // Spectrum's partial-decode branches below — see the matching comment
+    // in Ports::input().
+    if (Z80Ops::is2068) {
+        VIDEO::Draw(3, false); // no I/O contention on the SCLD
+        switch (address) {
+            case 0x00F4: SCLD::OUT_F4(data); return;
+            case 0x00FF: SCLD::OUT_FF(data); return;
+            default:     return; // other TS2068 ports: not this slice's scope
+        }
+    }
 
     // ULA =======================================================================
     if( !(address & 0x1)) {

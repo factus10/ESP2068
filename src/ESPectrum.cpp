@@ -42,6 +42,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "OSDMain.h"
 #include "Ports.h"
 #include "MemESP.h"
+#include "SCLD.h"
 #include "cpuESP.h"
 #include "Video.h"
 #include "messages.h"
@@ -713,11 +714,13 @@ void ESPectrum::setup() {
     //=======================================================================================
 
     MemESP::Init();
+    SCLD::allocateMemory(); // TS2068 HOME ROM/RAM backing store — see SCLD.h
 
     // Load romset
     Config::requestMachine(Config::arch, Config::romSet);
 
     MemESP::Reset();
+    SCLD::reset();
 
     if (Config::slog_on) showMemInfo("RAM Initialized");
 
@@ -1009,6 +1012,7 @@ void ESPectrum::reset() {
         ESPectrum::JoyVKTranslation[n] = (fabgl::VirtualKey) Config::joydef[n];
 
     MemESP::Reset(); // Reset Memory
+    SCLD::reset();
 
     VIDEO::Reset();
 

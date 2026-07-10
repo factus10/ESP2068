@@ -44,6 +44,8 @@ Reading 0xF4 returns the last value written.
 
 ## The 8-slot memory model
 
+**Implemented (2026-07-10):** this section is now real code, not just a contract — see `include/SCLD.h` / `src/SCLD.cpp` and `PLAN.md`'s Phase 2 slice 1 writeup for what's actually built (real HOME ROM/RAM backing store, DOCK/EXROM resolving to a shared empty-socket page until loaded, EXROM chip-select-mirrored across chunks) versus what's still open (a real ROM image, hardware bring-up). The pseudocode below matches `SCLD::resolveMemChunks()` closely but isn't kept byte-for-byte in sync — treat the code as authoritative once they disagree.
+
 Replace the 4×16K pointer array with 8×8K. One pointer per chunk, each aimed at HOME-ROM, HOME-RAM, an EXROM 8K page, or a DOCK 8K page.
 
 ```

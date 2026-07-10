@@ -35,6 +35,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "cpuESP.h"
 #include "ESPectrum.h"
 #include "MemESP.h"
+#include "SCLD.h"
 #include "Ports.h"
 #include "ESPConfig.h"
 #include "Video.h"
@@ -65,6 +66,7 @@ bool Z80Ops::is48;
 bool Z80Ops::is128;
 bool Z80Ops::isPentagon;
 bool Z80Ops::is2a3;
+bool Z80Ops::is2068;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -80,6 +82,7 @@ void CPU::reset() {
         Z80Ops::is128 = false;
         Z80Ops::isPentagon = false;
         Z80Ops::is2a3 = false;
+        Z80Ops::is2068 = false;
         statesInFrame = TSTATES_PER_FRAME_48;
         IntStart = INT_START48;
         IntEnd = INT_END48 + CPU::latetiming;
@@ -94,6 +97,7 @@ void CPU::reset() {
         Z80Ops::is128 = false;
         Z80Ops::isPentagon = false;
         Z80Ops::is2a3 = false;
+        Z80Ops::is2068 = false;
 
         switch (Config::ALUTK) {
         case 0:
@@ -130,6 +134,7 @@ void CPU::reset() {
         Z80Ops::is128 = true;
         Z80Ops::isPentagon = false;
         Z80Ops::is2a3 = false;
+        Z80Ops::is2068 = false;
         statesInFrame = TSTATES_PER_FRAME_128;
         IntStart = INT_START128;
         IntEnd = INT_END128 + CPU::latetiming;
@@ -143,6 +148,7 @@ void CPU::reset() {
         Z80Ops::is128 = false;
         Z80Ops::isPentagon = false;
         Z80Ops::is2a3 = true;
+        Z80Ops::is2068 = false;
         statesInFrame = TSTATES_PER_FRAME_128;
         IntStart = INT_STARTPLUS2A3;
         IntEnd = INT_ENDPLUS2A3 + CPU::latetiming;
@@ -156,6 +162,7 @@ void CPU::reset() {
         Z80Ops::is128 = false;
         Z80Ops::isPentagon = true;
         Z80Ops::is2a3 = false;
+        Z80Ops::is2068 = false;
         statesInFrame = TSTATES_PER_FRAME_PENTAGON;
         IntStart = INT_START_PENTAGON;
         IntEnd = INT_END_PENTAGON + CPU::latetiming;
@@ -163,6 +170,23 @@ void CPU::reset() {
         ESPectrum::target[1] = MICROS_PER_FRAME_PENTAGON;
         ESPectrum::target[2] = MICROS_PER_FRAME_PENTAGON_125SPEED;
         ESPectrum::target[3] = MICROS_PER_FRAME_PENTAGON_150SPEED;
+    } else if (Config::arch == "2068") {
+        // Floating-bus reads are out of scope for this machine (the SCLD
+        // returns the last port value written, not screen data — see
+        // TS2068-ESPECTRUM-PORT-PLAN.md's port 0xFF section), so
+        // Ports::getFloatBusData is deliberately left unset here.
+        Z80Ops::is48 = false;
+        Z80Ops::is128 = false;
+        Z80Ops::isPentagon = false;
+        Z80Ops::is2a3 = false;
+        Z80Ops::is2068 = true;
+        statesInFrame = TSTATES_PER_FRAME_2068;
+        IntStart = INT_START2068;
+        IntEnd = INT_END2068 + CPU::latetiming;
+        ESPectrum::target[0] = MICROS_PER_FRAME_2068;
+        ESPectrum::target[1] = MICROS_PER_FRAME_2068;
+        ESPectrum::target[2] = MICROS_PER_FRAME_2068_125SPEED;
+        ESPectrum::target[3] = MICROS_PER_FRAME_2068_150SPEED;
     }
 
     if (Config::arch == "+2A" || Config::arch=="+3") {
@@ -172,6 +196,13 @@ void CPU::reset() {
         Z80Ops::peek16 = &Z80Ops::peek16_2A3;
         Z80Ops::poke16 = &Z80Ops::poke16_2A3;
         Z80Ops::addressOnBus = &Z80Ops::addressOnBus_2A3;
+    } else if (Config::arch == "2068") {
+        Z80Ops::fetchOpcode = &Z80Ops::fetchOpcode_2068;
+        Z80Ops::peek8  = &Z80Ops::peek8_2068;
+        Z80Ops::poke8 = &Z80Ops::poke8_2068;
+        Z80Ops::peek16 = &Z80Ops::peek16_2068;
+        Z80Ops::poke16 = &Z80Ops::poke16_2068;
+        Z80Ops::addressOnBus = &Z80Ops::addressOnBus_2068;
     } else {
         Z80Ops::fetchOpcode = &Z80Ops::fetchOpcode_std;
         Z80Ops::peek8  = &Z80Ops::peek8_std;
@@ -495,6 +526,99 @@ IRAM_ATTR void Z80Ops::addressOnBus_std(uint16_t address, int32_t wstates) {
 
 // Put an address on bus lasting 'tstates' cycles
 IRAM_ATTR void Z80Ops::addressOnBus_2A3(uint16_t address, int32_t wstates) {
+    VIDEO::Draw(wstates, false);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TS2068 (SCLD) versions.
+//
+// Same shape as the _std versions above, ported to the 8-slot memChunk[]
+// model per TS2068-ESPECTRUM-PORT-PLAN.md: >>14 -> >>13, &0x3fff -> &0x1fff,
+// MemESP::ramCurrent[]/ramContended[] -> SCLD::memChunk[]/memChunkReadOnly[].
+// VIDEO::Draw()/Draw_Opcode() calls are kept (they also drive CPU::tstates
+// and, once slice 2 lands, cycle-interleaved rendering — not just
+// contention), but always pass contended=false: the SCLD has no memory
+// contention, so unlike addressOnBus_std, there is no per-access branch on
+// a contended flag here at all.
+///////////////////////////////////////////////////////////////////////////////
+
+// Fetch opcode from RAM (TS2068 version)
+IRAM_ATTR uint8_t Z80Ops::fetchOpcode_2068() {
+    uint8_t pg = Z80::getRegPC() >> 13;
+    VIDEO::Draw_Opcode(false);
+    return SCLD::memChunk[pg][Z80::getRegPC() & 0x1fff];
+}
+
+// Read byte from RAM (TS2068 version)
+IRAM_ATTR uint8_t Z80Ops::peek8_2068(uint16_t address) {
+    uint8_t page = address >> 13;
+    VIDEO::Draw(3, false);
+    return SCLD::memChunk[page][address & 0x1fff];
+}
+
+// Write byte to RAM (TS2068 version)
+IRAM_ATTR void Z80Ops::poke8_2068(uint16_t address, uint8_t value) {
+
+    uint8_t page = address >> 13;
+
+    VIDEO::Draw(3, false);
+
+    if (SCLD::memChunkReadOnly[page]) return;
+
+    SCLD::memChunk[page][address & 0x1fff] = value;
+
+}
+
+// Read word from RAM (TS2068 version)
+IRAM_ATTR uint16_t Z80Ops::peek16_2068(uint16_t address) {
+
+    uint8_t page = address >> 13;
+    if (page == ((address + 1) >> 13)) {    // Check if address is between two different chunks
+
+        VIDEO::Draw(6, false);
+
+        return ((SCLD::memChunk[page][(address & 0x1fff) + 1] << 8) | SCLD::memChunk[page][address & 0x1fff]);
+
+    } else {
+
+        // Order matters, first read lsb, then read msb, don't "optimize"
+        uint8_t lsb = Z80Ops::peek8(address);
+        uint8_t msb = Z80Ops::peek8(address + 1);
+        return (msb << 8) | lsb;
+
+    }
+
+}
+
+// Write word to RAM (TS2068 version)
+IRAM_ATTR void Z80Ops::poke16_2068(uint16_t address, RegisterPair word) {
+
+    uint8_t page = address >> 13;
+    uint16_t page_addr = address & 0x1fff;
+
+    if (page_addr < 0x1fff) {    // Check if address is between two different chunks
+
+        VIDEO::Draw(6, false);
+
+        if (SCLD::memChunkReadOnly[page]) return;
+
+        SCLD::memChunk[page][page_addr] = word.byte8.lo;
+        SCLD::memChunk[page][page_addr + 1] = word.byte8.hi;
+
+    } else {
+
+        // Order matters, first write lsb, then write msb, don't "optimize"
+        Z80Ops::poke8(address, word.byte8.lo);
+        Z80Ops::poke8(address + 1, word.byte8.hi);
+
+    }
+
+}
+
+// Put an address on bus lasting 'tstates' cycles (TS2068 version — no
+// contention, ever, so this is the flat-constant case the plan doc's
+// "Timing profile" section describes: identical to addressOnBus_2A3.)
+IRAM_ATTR void Z80Ops::addressOnBus_2068(uint16_t address, int32_t wstates) {
     VIDEO::Draw(wstates, false);
 }
 

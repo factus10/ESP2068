@@ -40,10 +40,17 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 // memory core), since the 8-slot memory model is the one place a mismatch
 // is subtle rather than a compile error.
 //
-// Everything below is a stub: it compiles and links so slices 2 and 3 can
-// build against the real interface immediately, but resolveMemChunks() and
-// the port handlers do not yet touch real HOME/DOCK/EXROM memory. Slice 1
-// fills in the bodies in SCLD.cpp.
+// Slice 1 (PLAN.md Phase 2) fills in real bodies: HOME ROM/RAM backing
+// store is allocated by allocateMemory() and always present; DOCK/EXROM
+// chunks resolve to a shared, read-only, zeroed "empty socket" page until
+// something calls loadDockChunk()/loadExromImage() (slice 3's job) — real
+// hardware doesn't crash when you read an empty cartridge socket, and
+// neither does memChunk[], since it is never null.
+//
+// SCLD.cpp is written to also compile host-side (outside the ESP-IDF/
+// PlatformIO build) when ESP2068_HOST_TEST is defined, so the exact same
+// resolve logic backs both the firmware and test/host/scld_test.cpp — see
+// PLAN.md Phase 2, slice 1 exit criteria ("a simple host-side harness").
 // ---------------------------------------------------------------------------
 
 class SCLD {
@@ -90,22 +97,39 @@ public:
     // any write to port 0xF4, after any write to port 0xFF (cheap — 8
     // iterations — so it's simplest to always re-resolve rather than track
     // whether bit 7 specifically changed), and after cartridge load/eject.
-    //
-    // Stub: currently points every chunk at homePage()'s stub result.
     static void resolveMemChunks();
 
     // Per-chunk page resolvers, named to match the pseudocode in the plan
     // doc's "The 8-slot memory model" section 1:1.
     //   homePage(c)  -> HOME ROM for c in {0,1} (below 0x4000), HOME RAM for
-    //                   c in {2..7}.
-    //   dockPage(c)  -> the loaded .DCK's 8K image for chunk c, or nullptr
-    //                   if nothing is docked there.
-    //   exromPage(c) -> the loaded EXROM 8K image for chunk c, or nullptr.
-    // All three are stubs (return nullptr) until slice 1 wires up the real
-    // HOME backing store and slice 3 wires up DOCK/EXROM image loading.
+    //                   c in {2..7}. Always a real, allocated page.
+    //   dockPage(c)  -> the loaded .DCK's 8K image for chunk c, or the
+    //                   shared empty-socket page if nothing is docked there.
+    //   exromPage(c) -> the loaded EXROM 8K image, chip-select-mirrored
+    //                   across whichever chunk(s) select it (EXROM is a
+    //                   single 8K ROM with no chunk-specific addressing of
+    //                   its own — see allocateMemory()'s comment), or the
+    //                   empty-socket page if no EXROM image is loaded yet.
     static uint8_t* homePage(int chunk);
     static uint8_t* dockPage(int chunk);
     static uint8_t* exromPage(int chunk);
+
+    // ---- Backing-store setup and image loading ----
+    // Allocates HOME ROM (16K) + HOME RAM (48K) and the shared empty-socket
+    // page. Call once at startup, before the first resolveMemChunks(). HOME
+    // ROM content is zeroed (no real TS2068 ROM image is embedded in this
+    // repo — see PLAN.md's risk register on ROM/cartridge provenance);
+    // loading a real ROM image is a separate, not-yet-scoped piece of work.
+    static void allocateMemory();
+
+    // Slice 3 (cartridge loader) calls these as it parses a .DCK: point
+    // chunk `chunk` at an already-loaded 8K image, RAM (writable) or ROM
+    // (read-only) per the .DCK's per-chunk type marker. Ownership of `data`
+    // stays with the caller — SCLD only stores the pointer. Call
+    // resolveMemChunks() afterwards to make the change visible in memChunk[].
+    static void loadDockChunk(int chunk, uint8_t* data, bool writable);
+    static void unloadDockChunk(int chunk);
+    static void loadExromImage(uint8_t* data);
 
     // ---- Port handlers ----
     // Both ports are fully decoded on the 2068, unlike the Spectrum's

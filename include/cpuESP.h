@@ -64,6 +64,19 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #define MICROS_PER_FRAME_PENTAGON_125SPEED 16384
 #define MICROS_PER_FRAME_PENTAGON_150SPEED 13653
 
+// TS2068 (60Hz/NTSC). Z80 clock 3,528,000Hz, 224 T-states/line, 262
+// lines/frame (24 top border + 192 active + 25 bottom border + 21 vsync) =
+// 58688 T-states/frame. Sourced from libspectrum's timings.c (the Fuse
+// emulator project), which carries a `timings_frame_timex_scld_60hz` table
+// for this exact machine — not derived/guessed. Not yet cross-checked
+// against the TS2068 technical/service manual or real hardware; treat as a
+// strong starting point to verify at hardware bring-up, per
+// TS2068-ESPECTRUM-PORT-PLAN.md's "Timing profile" section.
+#define TSTATES_PER_FRAME_2068 58688
+#define MICROS_PER_FRAME_2068 16639
+#define MICROS_PER_FRAME_2068_125SPEED 13311
+#define MICROS_PER_FRAME_2068_150SPEED 11092
+
 #define INT_START48 0
 #define INT_END48 32
 #define INT_STARTTK 0
@@ -74,6 +87,8 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #define INT_ENDPLUS2A3 32
 #define INT_START_PENTAGON 0
 #define INT_END_PENTAGON 36
+#define INT_START2068 0
+#define INT_END2068 32 // libspectrum: 32 T-states, same pulse width as 48K/TK/+2A3
 
 class CPU
 {
