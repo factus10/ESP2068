@@ -51,6 +51,13 @@ int main(int argc, char** argv) {
     check(DockLoader::hasAutostart(), "hasAutostart() is true (chunk 0 is present in the DOCK bank)");
     check(DockLoader::autostartMmuSelect() == 0x03,
           "autostartMmuSelect() is 0x03 (chunks 0 and 1, matching the fixture's two present chunks)");
+    // Fixture's chunk 0 starts "ESP2068 ..." -> bytes 2-3 are 'P','2' (0x50,0x32);
+    // little-endian entry point = 0x3250. Mechanical check that
+    // autostartEntryPoint() reads the real header field, not a fixed 0 --
+    // see DockLoader.cpp's top comment for why that distinction is the
+    // whole point of this fix.
+    check(DockLoader::autostartEntryPoint() == 0x3250,
+          "autostartEntryPoint() reads chunk 0 offset 2-3 (0x3250 for this fixture), not a hardcoded 0");
 
     // ---- Applying the autostart mask makes the cartridge visible via memChunk[] ----
     printf("\n-- apply autostart mask --\n");

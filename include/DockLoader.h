@@ -7,12 +7,17 @@ New for this port; there is no upstream ESPectrum equivalent. Parses the
 .DCK format documented in test/dock/README.md and populates SCLD's
 DOCK/EXROM backing store (include/SCLD.h) accordingly.
 
-See src/DockLoader.cpp's top comment for the autostart design and its
-honest limits — this does not parse a cartridge's own in-ROM LROS/AROS
-header (start address, magic bytes); that byte layout was not pinned
-down with enough confidence during research to implement it correctly.
-What's here is a simpler, deliberately-scoped mechanism that gets a
-plain LROS-style cartridge running from a cold boot.
+See src/DockLoader.cpp's top comment for the autostart design. An
+earlier version of this file didn't parse the cartridge's own in-ROM
+LROS header at all (the byte layout wasn't pinned down with enough
+confidence from research alone) and just relied on the Z80 landing at
+PC=0 after reset — verified wrong (2026-07-10) against a real LROS
+cartridge (Zebra OS-64, see PLAN.md's slice 3 writeup): its header
+occupies bytes 0-4 of chunk 0, and the actual entry point is a JP
+instruction sitting at whatever address the header's offset 2-3 field
+specifies (here, $0005, not $0000). Executing from PC=0 unconditionally
+would have executed the header's own bytes as garbage instructions.
+This version reads that field for real.
 
 Based on ESPectrum, a Sinclair ZX Spectrum emulator for Espressif ESP32 SoC
 Copyright (c) 2023-2025 Víctor Iborra [Eremus] and 2023 David Crespo [dcrespo3d]
@@ -75,6 +80,14 @@ public:
     // one bit per DOCK chunk the cartridge actually populated. Only
     // meaningful when hasAutostart() is true.
     static uint8_t autostartMmuSelect();
+
+    // The address to set the Z80's PC to on autostart: the LROS header's
+    // own start-address field (chunk 0, offset 2-3, little-endian) --
+    // NOT necessarily 0. Real cartridges put header metadata at 0-4 and
+    // point this field at their actual entry point (which is often a
+    // short JP a few bytes in, but is not guaranteed to be). Only
+    // meaningful when hasAutostart() is true.
+    static uint16_t autostartEntryPoint();
 
 };
 

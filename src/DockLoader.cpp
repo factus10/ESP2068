@@ -10,32 +10,43 @@ exactly — that Python module was written first and cross-checked against
 two independent copies of the source reference; this is a direct C++
 port of the same logic, not a re-derivation.
 
-Autostart design, and why it's simpler than the real hardware:
+Autostart design, and a real bug this caught:
 
 TS2068-ESPECTRUM-PORT-PLAN.md's "Cartridge loading" section says LROS/
 AROS autostart cartridges "page themselves in and vector execution on
 reset" and points at check_trdos (Z80_JLS.cpp) as a working template —
 that mechanism watches the Z80's PC on every jump/call/return, because
 TR-DOS can be entered at any point during a running program, not just at
-boot. Research into the real TS2068 (see PLAN.md's slice 3 writeup)
-turned up the *shape* of real hardware's boot protocol: a cartridge has
-its own short in-ROM header (a "Memory Chunk Specification" byte and a
-2-byte jump address), and the real EXROM's initialization code reads
-that header and hands off control via a "GOTO BANK" routine. It did not
-turn up confirmed byte offsets for that header — not enough to implement
-correctly rather than guessed.
+boot. This does NOT use that pattern: LROS cartridges are defined to
+always autorun "after initialization is finished" (boot only, unlike
+TR-DOS), so a one-shot apply at reset is enough — no continuous PC watch
+needed.
 
-Two things make a simpler mechanism both sufficient and honest for this
-increment: LROS cartridges are defined to always autorun "after
-initialization is finished" (i.e. at boot, not mid-session — unlike
-TR-DOS), and they take total control from address 0, which is exactly
-where the Z80 already fetches its first opcode after a reset. So instead
-of parsing an in-ROM header we don't have confirmed byte offsets for,
-DockLoader derives the same *outcome* — the cartridge's chunks paged in
-before the first opcode fetch — straight from the .DCK container's own
-chunk-presence bits, which are fully spec'd and already parsed here
-regardless. hasAutostart()/autostartMmuSelect() expose that; the actual
-reset-time hookup lives in CPU::reset() (see PLAN.md).
+An earlier version of this file also skipped parsing the cartridge's own
+in-ROM header at all, reasoning that LROS "takes total control from
+address 0" so the Z80 already lands in the right place after
+Z80::reset(). **That reasoning was wrong, caught by testing against a
+real cartridge** (Zebra OS-64.BIN, see PLAN.md's slice 3 "real ROM/DOCK
+end-to-end test" writeup): a real LROS header occupies bytes 0-4 of
+chunk 0 as pure metadata (unused byte, cartridge-type byte, a 2-byte
+start-address field, a chunk-spec byte) — NOT executable code — and the
+start-address field points at wherever the cartridge's actual entry
+point is, which is often close to but not necessarily exactly address 0
+(Zebra's is $0005: a JP instruction to $0D9E). Executing from PC=0
+unconditionally, as the earlier version did, would run the header bytes
+themselves as garbage instructions.
+
+The fix: read the 2-byte start-address field (chunk 0, offset 2-3,
+little-endian) when chunk 0 is present and expose it via
+autostartEntryPoint(). CPU::reset()'s autostart hookup now calls
+Z80::setRegPC() with it after paging the cartridge in, instead of
+relying on Z80::reset()'s PC=0. The chunk-enable mask itself
+(autostartMmuSelect()) is still derived from the .DCK container's own
+chunk-presence bits rather than the header's chunk-spec byte — those two
+should always agree for a correctly-packaged cartridge (verified true
+for the real Zebra/eToolkit cartridges used in testing), and the
+container's bits are what's actually fully spec'd and already parsed
+here regardless.
 
 This does not attempt AROS autostart (depends on a working System ROM,
 which doesn't exist yet — see slice 1's still-open ROM-image TODO) or a
@@ -99,6 +110,7 @@ namespace {
 
     uint8_t autostartMask = 0;
     bool autostartCandidate = false;
+    uint16_t autostartEntry = 0;
 
 }
 
@@ -109,6 +121,7 @@ void DockLoader::unload() {
     allocatedChunks.clear();
     autostartMask = 0;
     autostartCandidate = false;
+    autostartEntry = 0;
     SCLD::resolveMemChunks();
 }
 
@@ -168,6 +181,12 @@ bool DockLoader::loadFromBuffer(const uint8_t* data, size_t size) {
         if (pc.bankId == BANK_DOCK) {
             SCLD::loadDockChunk(pc.index, buf, pc.writable);
             dockMask |= (1 << pc.index);
+            if (pc.index == 0) {
+                // LROS header, chunk 0 offset 2-3: start address, LSB/MSB.
+                // See this file's top comment -- reading this for real is
+                // the fix for a bug real-cartridge testing caught.
+                autostartEntry = buf[2] | (buf[3] << 8);
+            }
         } else { // BANK_EXROM
             SCLD::loadExromImage(buf);
         }
@@ -222,4 +241,8 @@ bool DockLoader::hasAutostart() {
 
 uint8_t DockLoader::autostartMmuSelect() {
     return autostartMask;
+}
+
+uint16_t DockLoader::autostartEntryPoint() {
+    return autostartEntry;
 }
