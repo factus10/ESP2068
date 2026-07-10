@@ -225,7 +225,21 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
         switch (address & 0xFF) {
             case 0x00F4: return SCLD::IN_F4();
             case 0x00FF: return SCLD::IN_FF();
-            default:     return 0xff; // other TS2068 ports: not this slice's scope
+            // Other TS2068 ports (keyboard $FE, AY $F5/$F6, etc.): not
+            // this slice's scope, stubbed below. Note for whenever the
+            // keyboard port lands: unlike 0xF4/0xFF, its upper address
+            // byte is NOT "don't care" — real keyboard-scan code does
+            // `LD A,rowmask; IN A,($FE)` (or the BC-loaded `IN r,(C)`
+            // form for faster multi-row scans, per the project owner),
+            // and the row-select value is read from that upper byte, not
+            // the low byte used for decode. Confirmed against FUSE:
+            // peripherals/ula.c's port table decodes 0xFE on the low
+            // byte only (same shape as the fix above), but
+            // `ula_read()` separately does `keyboard_read(port >> 8)` —
+            // decode and data are two different reads of the same
+            // address. Get this wrong and 0xFE will "half work": ports
+            // route correctly, but every row reads as unpressed.
+            default:     return 0xff;
         }
     }
 
