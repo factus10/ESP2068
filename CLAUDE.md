@@ -12,7 +12,9 @@ ESPectrum's full source and history are vendored in (merged from the `upstream` 
 
 **Slice 1 (MMU + memory core) has a first real increment landed** — see `PLAN.md` Phase 2 for the full breakdown. In short: [`include/SCLD.h`](include/SCLD.h) + [`src/SCLD.cpp`](src/SCLD.cpp) now allocate and resolve real HOME ROM/RAM/DOCK/EXROM backing store (not stubs); `src/CPU.cpp` has a new `Z80Ops::is2068` flag and six `_2068` peek/poke/fetchOpcode/addressOnBus functions wired into the existing `_std`/`_2A3` function-pointer dispatch (**not** in-place edits to `_std`, which stays shared by 48K/128K/Pentagon/TK); `src/Ports.cpp` fully-decodes ports 0xF4/0xFF ahead of the Spectrum's partial-decode chain; `include/cpuESP.h` has sourced (libspectrum) 60Hz timing constants. A standalone host-side test, [`test/host/scld_test.cpp`](test/host/scld_test.cpp), exercises the real `SCLD.cpp` (30/30 checks passing) without needing ESP-IDF or hardware.
 
-**Not yet done, so don't assume it works:** no real TS2068 ROM image is embedded or loadable yet (HOME ROM is zeroed placeholder memory — the mechanism is real, the content isn't), the OSD menu has no "2068" entry (Phase 3), and nothing has booted on real hardware. Slices 2 (hi-res renderer) and 3 (cartridge loader) haven't started.
+**Slice 4 (DOCK corpus + test harness) also has a first increment**: [`test/dock/`](test/dock/) has offline Python tooling for the `.DCK` cartridge container format (`dck_format.py` parser/writer, `dck_inspect.py` CLI, `make_synthetic_dck.py` fixture generator) plus a written provenance policy — no real cartridge/ROM dumps belong in this public repo; see `test/dock/README.md` before adding any binary image anywhere in the tree.
+
+**Not yet done, so don't assume it works:** no real TS2068 ROM image is embedded or loadable yet (HOME ROM is zeroed placeholder memory — the mechanism is real, the content isn't), the OSD menu has no "2068" entry (Phase 3), and nothing has booted on real hardware. Slices 2 (hi-res renderer) and 3 (cartridge loader, the actual C++ `.DCK` loader) haven't started.
 
 ## Upstream facts worth knowing before touching code
 

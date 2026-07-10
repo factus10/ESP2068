@@ -54,11 +54,22 @@ Real memory core landed, not just the Phase 1 stub:
 
 **Explicitly not done in this increment** (tracked so it isn't mistaken for finished): a real TS2068 ROM image and a loader for it; the second write-protect call site flagged in Phase 1 (`MemESP::writebyte`/`writeword`) — turned out not to matter yet, since TS2068 uses its own backing store entirely separate from `MemESP::ram[]`/`rom[]` and doesn't go through `Snapshot.cpp`/`Tape.cpp`'s `.SNA`/`.TAP` paths; it only becomes relevant if something later decides to reuse those paths for TS2068 snapshots. The OSD menu entry (Phase 3). Flash-and-boot on real hardware (no board in this environment — same open item as Phase 0).
 
+### Slice 4 — done (2026-07-10), first increment
+
+Offline tooling and a synthetic fixture, not a real image corpus — see [`test/dock/README.md`](test/dock/README.md) for the full writeup:
+
+- **`.DCK` container format nailed down** via web research rather than guessed (it wasn't in either plan doc at byte level): no magic number, a 9-byte header per bank (bank ID + 8 chunk-type bytes), chunk type is a 2-bit field (D0 = writable, D1 = image-present-in-file), 8192-byte images follow the header for present chunks, repeat for additional banks. Sourced from the "Spectrum FAQ - File Formats" reference (the format as originally used by the Warajevo emulator), corroborated against two independent copies of the same text. **Not yet cross-checked against a real `.dck` file** — nobody on this project has one yet; do that first and fix the format doc/parser together if anything's off.
+- **`test/dock/dck_format.py`** — parser/writer, raises on truncated headers/chunk data rather than misreading them. **`test/dock/test_dck_format.py`** — round-trip + error-handling checks, 13/13 passing. **`test/dock/dck_inspect.py`** — CLI to print any `.dck`'s bank/chunk structure without interpreting chunk contents.
+- **`test/dock/make_synthetic_dck.py`** → `test/dock/fixtures/synthetic.dck` — one DOCK bank, a RAM chunk and a ROM chunk filled with clearly-synthetic patterns (a marker string, a byte ramp), not real code. Proves the container format round-trips; proves nothing about running real software, since there isn't any in it.
+- **Provenance policy written down** (`test/dock/README.md`, also `test/dock/.gitignore`'s `real/` pattern): no real cartridge/ROM dumps in this repo without confirmed redistribution rights, real dumps for local testing go in a gitignored `test/dock/real/`, prefer homebrew/public-domain fixtures for anything committed.
+
+**Explicitly not done:** any real `.DCK`/ROM image (by design — see provenance policy), per-mode display test cards for slice 2 (a different, not-yet-started shape of fixture), the actual C++ loader that will consume this format in the firmware (slice 3).
+
 Exit criteria per slice:
 - **Slice 1:** ~~peek/poke/fetchOpcode round-trip correctly through `memChunk[]` for HOME/DOCK/EXROM in a unit-level test~~ **done**, see above. ~~0xF4/0xFF port writes visibly repoint the right chunks~~ **done** (host test + `Ports.cpp` wiring). ~~ROM chunks reject writes~~ **done** (host test exercises the flag; `CPU.cpp`'s actual gate is code-reviewed, not test-executed, since that needs the full Z80 core). Remaining before calling slice 1 fully closed: real ROM image + loader, and hardware bring-up.
 - **Slice 2:** renders a static test card (from slice 4's corpus) correctly in standard, extended-colour, and hi-res modes on real hardware/monitor.
 - **Slice 3:** loads a known-good `.DCK` (from slice 4) and autostarts it.
-- **Slice 4:** a documented set of `.DCK` dumps + per-mode test cards checked in (or referenced, if licensing requires external sourcing) with a README noting provenance — don't check in cartridge dumps without confirming you have the right to redistribute them; homebrew/public-domain test cards are the safe default for anything committed to the repo.
+- **Slice 4:** ~~a documented set of `.DCK` dumps + per-mode test cards checked in~~ **partially done** — format tooling + a synthetic structural fixture are done and documented; a *real* `.DCK` corpus and display test cards are still open, deliberately (provenance — see `test/dock/README.md`). Good enough to unblock slice 3 starting on the container-format side; not enough to fully validate a real loader end-to-end yet.
 
 ## Phase 3 — Integration
 
@@ -77,5 +88,5 @@ These are called out in the plan doc too; repeating here because they affect seq
 
 - **VGA timing for the new 512-column mode is hand-derived, not copy-paste.** Existing `vidmodes[]` rows top out at 360 active columns and each hand-tunes six APLL clock-divider constants plus porch/sync widths. Budget real monitor time for slice 2, not just a spreadsheet calculation.
 - ~~**No existing per-chunk read-only mechanism.**~~ **Resolved by slice 1.** v0.1 of the plan doc assumed ESPectrum's ROM write-protect "generalizes"; verification found it's a single hardcoded `page == 0` check, not a flag array. `SCLD::memChunkReadOnly[8]` is the new one, built fresh as expected, and is what `CPU.cpp`'s `poke8_2068`/`poke16_2068` gate on.
-- **DOCK/ROM image provenance.** Real `.DCK` dumps and ROM images may be copyrighted. Fine to use privately for bring-up/testing; be deliberate about what actually gets committed to a repo, especially if it's ever made public.
+- **DOCK/ROM image provenance.** Real `.DCK` dumps and ROM images may be copyrighted. Fine to use privately for bring-up/testing; be deliberate about what actually gets committed to a repo, especially if it's ever made public. Slice 4 operationalized this: policy is written down in `test/dock/README.md`, and `test/dock/.gitignore` excludes a local-only `real/` directory so local testing doesn't risk an accidental commit.
 - **GPL-3.0 inheritance.** Any dependency or tool pulled in during this port needs to stay license-compatible with the GPL-3.0 base.
