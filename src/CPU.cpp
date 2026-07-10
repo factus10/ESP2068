@@ -36,6 +36,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "ESPectrum.h"
 #include "MemESP.h"
 #include "SCLD.h"
+#include "SCLDPrinter.h"
 #include "DockLoader.h"
 #include "Ports.h"
 #include "ESPConfig.h"
@@ -203,6 +204,14 @@ void CPU::reset() {
             SCLD::OUT_F4(DockLoader::autostartMmuSelect());
             Z80::setRegPC(DockLoader::autostartEntryPoint());
         }
+
+        // Printer (port 0xFB) state is timed against global_tstates
+        // (zeroed a few lines below, at the end of this function) --
+        // force it back to idle here too, so a reset mid-print can't
+        // leave a stale originCycles snapshot from before the counter
+        // wrapped back to 0. Matches FUSE's printer_zxp_reset(), which
+        // forces the same "motor off" end state on any machine reset.
+        SCLDPrinter::reset();
     }
 
     if (Config::arch == "+2A" || Config::arch=="+3") {

@@ -38,6 +38,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "Z80_JLS/z80.h"
 #include "MemESP.h"
 #include "SCLD.h"
+#include "SCLDPrinter.h"
 #include "Video.h"
 #include "AySound.h"
 #include "Tape.h"
@@ -297,8 +298,21 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
                 // omitting the fold is exactly the "no joystick" case,
                 // not an approximation of it.
                 return AySound::getRegisterData();
-            // Other TS2068 ports (printer $FB, etc.): not this slice's
-            // scope.
+            case 0x00FB:
+                // TS 2040/ZX-Printer-compatible stylus printer status
+                // read (Technical Manual Sec. 2.1.13.3/4.1.3; confirmed
+                // against FUSE's printer_zxp_read(), peripherals/printer.c
+                // -- TS2068 uses PERIPH_TYPE_ZXPRINTER_FULL_DECODE, a
+                // full-low-byte-decoded 0xFB, not the 48K's partial
+                // "any address with bit 2 clear" decode). See
+                // SCLDPrinter.h for the full status/timing model; this
+                // implements the status/pacing half of the real
+                // protocol (so ROM printer routines poll correctly and
+                // don't hang) without persisting any printed image
+                // anywhere yet -- see SCLDPrinter.h's header comment.
+                return SCLDPrinter::read(CPU::global_tstates + CPU::tstates);
+            // Other TS2068 ports (AY joystick input, etc.): not this
+            // slice's scope.
             default: return 0xff;
         }
     }
@@ -552,6 +566,10 @@ IRAM_ATTR void Ports::output(uint16_t address, uint8_t data) {
             // the audio-mix buffer up to the current tstate before the
             // register value actually changes, then write it.
             case 0x00F6: ESPectrum::AYGetSample(); AySound::setRegisterData(data); return;
+            // TS 2040/ZX-Printer-compatible stylus printer write --
+            // see the matching read case in Ports::input() and
+            // SCLDPrinter.h for the protocol this implements.
+            case 0x00FB: SCLDPrinter::write(data, CPU::global_tstates + CPU::tstates); return;
             default:     return; // other TS2068 ports: not this slice's scope
         }
     }
