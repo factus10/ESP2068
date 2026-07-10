@@ -25,6 +25,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SCLDVideo.h"
 
+int SCLDVideo::standardBitmapOffset(int row, int col) {
+    return ((row & 0xC0) << 5) | ((row & 0x07) << 8) | ((row & 0x38) << 2) | col;
+}
+
+int SCLDVideo::standardAttributeOffset(int row, int col) {
+    return 0x1800 + (row >> 3) * 32 + col;
+}
+
 void SCLDVideo::expandStandardByte(uint8_t bmp, uint8_t att, uint8_t out[16]) {
 
     uint8_t ink = att & 0x07;
@@ -40,10 +48,8 @@ void SCLDVideo::expandStandardByte(uint8_t bmp, uint8_t att, uint8_t out[16]) {
 void SCLDVideo::expandHiresBytePair(uint8_t dfile1Byte, uint8_t dfile2Byte, uint8_t out[16]) {
 
     for (int i = 0; i < 8; i++) {
-        uint8_t bit1 = (dfile1Byte & (0x80 >> i)) ? 1 : 0; // bit 7 = leftmost
-        uint8_t bit2 = (dfile2Byte & (0x80 >> i)) ? 1 : 0;
-        out[2*i]     = bit1; // DFILE1 -> even output columns
-        out[2*i + 1] = bit2; // DFILE2 -> odd output columns
+        out[i]     = (dfile1Byte & (0x80 >> i)) ? 1 : 0; // bit 7 = leftmost; block, not interleaved
+        out[8 + i] = (dfile2Byte & (0x80 >> i)) ? 1 : 0;
     }
 }
 

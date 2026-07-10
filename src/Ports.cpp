@@ -203,13 +203,26 @@ IRAM_ATTR uint8_t Ports::input(uint16_t address) {
 
     VIDEO::Draw(1, (Z80Ops::is48 || Z80Ops::is128) && MemESP::ramContended[rambank]); // I/O Contention (Early)
 
-    // TS2068 (SCLD): fully decoded ports, checked before any of the
-    // Spectrum's partial-decode branches below. This matters concretely for
-    // 0xF4 (0x00F4 & 0x0001 == 0) — it would otherwise be wrongly caught by
-    // the "ULA PORT" even-address check just below.
+    // TS2068 (SCLD): decoded on the low byte only, checked before any of
+    // the Spectrum's partial-decode branches below. This matters
+    // concretely for 0xF4 (0x00F4 & 0x0001 == 0) — it would otherwise be
+    // wrongly caught by the "ULA PORT" even-address check just below.
+    //
+    // Low-byte match, not a full 16-bit match: real single-byte port I/O
+    // (`OUT (n),A` / `IN A,(n)`, decodeOpcoded3/decodeOpcodedb above) puts
+    // the accumulator's value on the address bus's upper byte, so
+    // `LD A,val; OUT ($F4),A` sends address (val<<8)|0xF4, not 0x00F4 —
+    // a strict 16-bit match (this code's original version) would only
+    // ever succeed when val happened to be 0, silently dropping nearly
+    // every real write. Confirmed against FUSE (peripherals/scld.c's
+    // port table uses mask 0x00ff, i.e. exactly (port & 0xff) ==
+    // value) and against Z80_JLS.cpp's own instruction decoders — not
+    // "fully decoded on all 16 lines" as an earlier draft of the plan
+    // doc assumed, "fully decoded on the low byte" (still a fuller
+    // decode than the Spectrum ULA's single-bit check on 0xFE).
     if (Z80Ops::is2068) {
         VIDEO::Draw(3, false); // no I/O contention on the SCLD
-        switch (address) {
+        switch (address & 0xFF) {
             case 0x00F4: return SCLD::IN_F4();
             case 0x00FF: return SCLD::IN_FF();
             default:     return 0xff; // other TS2068 ports: not this slice's scope
@@ -446,12 +459,12 @@ IRAM_ATTR void Ports::output(uint16_t address, uint8_t data) {
 
     VIDEO::Draw(1, (Z80Ops::is48 || Z80Ops::is128) && MemESP::ramContended[rambank]); // I/O Contention (Early)
 
-    // TS2068 (SCLD): fully decoded ports, checked before any of the
+    // TS2068 (SCLD): low-byte-decoded ports, checked before any of the
     // Spectrum's partial-decode branches below — see the matching comment
-    // in Ports::input().
+    // in Ports::input() for why this is `& 0xFF`, not a full 16-bit match.
     if (Z80Ops::is2068) {
         VIDEO::Draw(3, false); // no I/O contention on the SCLD
-        switch (address) {
+        switch (address & 0xFF) {
             case 0x00F4: SCLD::OUT_F4(data); return;
             case 0x00FF: SCLD::OUT_FF(data); return;
             default:     return; // other TS2068 ports: not this slice's scope

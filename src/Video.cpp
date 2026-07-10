@@ -1051,18 +1051,23 @@ IRAM_ATTR void VIDEO::EndFrame() {
 // DrawBorder interleaved state machine above, rather than a TS2068
 // version of it.
 //
-// Pixel addressing within a display file uses the classic Spectrum/
-// TS2068 "interleaved thirds" layout (confirmed for standard mode
-// against a TS2068 reference library's documented formula; ASSUMED,
-// not independently confirmed, for hi-res mode's two display files --
-// see SCLDVideo.h's comment on the same point).
+// Pixel/attribute addressing and the hi-res byte expansion are in
+// SCLDVideo (tested there, not reimplemented inline here) -- see
+// SCLDVideo.h's top comment for what's confirmed against FUSE and what
+// was corrected there on 2026-07-10 (an attribute-row addressing bug
+// and a hi-res interleave-order bug, both real, both shipped before
+// being caught by that cross-reference).
 //
-// Only standard mode (SCLD::videoMode == 0x00) and hi-res mode (bit 2
-// set) are rendered correctly. Dual-file (bit 0) and hi-color (bit 1)
-// modes fall back to rendering as standard mode from DFILE1 -- wrong
-// for those modes specifically, but "shows something recognizable"
-// rather than a crash or a blank screen. Hi-color is deferred past v1
-// anyway (PLAN.md's open decisions); dual-file isn't, and is a real gap.
+// Only standard mode (SCLD::videoMode == 0x00) and hi-res mode
+// (== 0x06 exactly, FUSE's "HIRES") are rendered correctly. Dual-file
+// (bit 0), hi-color (bit 1), and the other three DECR values that also
+// have bit 2 set (0x04 HIRESATTR, 0x05 HIRESATTRALTD, 0x07
+// HIRESDOUBLECOL -- see SCLDVideo.h) all fall back to rendering as
+// standard mode from DFILE1 -- wrong for those modes specifically, but
+// "shows something recognizable" rather than a crash or a blank
+// screen. Hi-color is deferred past v1 anyway (PLAN.md's open
+// decisions); the others are real gaps, now precisely scoped instead
+// of vaguely "not confirmed".
 IRAM_ATTR void VIDEO::RenderFrame2068() {
 
     uint8_t* dfile1 = SCLD::memChunk[2]; // DFILE1_BASE (0x4000) == chunk 2, see SCLD.h
@@ -1083,7 +1088,7 @@ IRAM_ATTR void VIDEO::RenderFrame2068() {
         memset(vga.frameBuffer[line], borderByte, hRes);
     }
 
-    bool hires = SCLD::videoMode & 0x04;
+    bool hires = SCLD::videoMode == 0x06; // FUSE's HIRES exactly -- see SCLDVideo.h
 
     uint8_t hiresInk = 0, hiresPaper = 7;
     if (hires) SCLDVideo::hiresInkPaperColors(SCLD::hiresInkPaper, hiresInk, hiresPaper);
@@ -1094,16 +1099,10 @@ IRAM_ATTR void VIDEO::RenderFrame2068() {
 
         uint8_t* out = vga.frameBuffer[fbTop + row];
 
-        // Classic Spectrum/TS2068 interleaved-thirds bitmap addressing,
-        // relative to the display file's own base (col is the byte
-        // column, 0..31 -- X>>3 in the reference library's formula).
-        int bmpRowOffset = ((row & 0xC0) << 5) | ((row & 0x07) << 8) | ((row & 0x38) << 2);
-        int attRowOffset = 0x1800 + row * 32; // relative to DFILE1 base; standard mode only
-
         if (hires) {
 
             for (int col = 0; col < 32; col++) {
-                int bmpOffset = bmpRowOffset | col;
+                int bmpOffset = SCLDVideo::standardBitmapOffset(row, col);
                 uint8_t pixels[16];
                 SCLDVideo::expandHiresBytePair(dfile1[bmpOffset], dfile2[bmpOffset], pixels);
                 uint8_t* dst = out + col * 16;
@@ -1113,9 +1112,9 @@ IRAM_ATTR void VIDEO::RenderFrame2068() {
         } else {
 
             for (int col = 0; col < 32; col++) {
-                int bmpOffset = bmpRowOffset | col;
+                int bmpOffset = SCLDVideo::standardBitmapOffset(row, col);
                 uint8_t bmp = dfile1[bmpOffset];
-                uint8_t att = dfile1[attRowOffset + col];
+                uint8_t att = dfile1[SCLDVideo::standardAttributeOffset(row, col)];
 
                 // FLASH (bit 7): swap the ink/paper fields on alternating
                 // frames, reusing the same VIDEO::flashing toggle the

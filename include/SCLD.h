@@ -149,10 +149,17 @@ public:
     static void loadExromImage(uint8_t* data);
 
     // ---- Port handlers ----
-    // Both ports are fully decoded on the 2068, unlike the Spectrum's
-    // partial decoding elsewhere in Ports.cpp (e.g. `(address & 0x8002) ==
-    // 0`) — Ports::output()/input() must match the full 16-bit port
-    // address before calling these, not a bitmask subset.
+    // Both ports are decoded on their low byte on the 2068 — a fuller
+    // decode than the Spectrum ULA's single-bit check on 0xFE, but NOT a
+    // full 16-bit match (Ports.cpp checks `address & 0xFF`, not
+    // `address == 0x00F4`). Corrected 2026-07-10 after a real bug: an
+    // earlier version required the full 16-bit address, which only
+    // matched real `OUT (n),A`/`IN A,(n)` traffic when the accumulator
+    // happened to be 0 — real Z80 hardware puts the accumulator's value
+    // on the address bus's upper byte for those instructions, so
+    // `LD A,val; OUT ($F4),A` sends `(val<<8)|0xF4`, not `0x00F4`, for
+    // any val. Confirmed against FUSE's SCLD port table
+    // (peripherals/scld.c, mask 0x00ff) before fixing.
     static void    OUT_F4(uint8_t value);
     static uint8_t IN_F4();   // returns last value written (mmuSelect)
     static void    OUT_FF(uint8_t value);

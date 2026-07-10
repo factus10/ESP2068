@@ -67,31 +67,61 @@ int main() {
               "bit 7 (leftmost source pixel) maps to output pixels 0-1, not 14-15");
     }
 
-    // ---- Hi-res mode: interleave order and pixel-doubling ----
-    printf("\n-- expandHiresBytePair --\n");
+    // ---- Hi-res mode: BLOCK arrangement (not interleaved), per FUSE's
+    // uidisplay_plot16 -- corrected 2026-07-10, see SCLDVideo.h's top
+    // comment. out[0..7] = all of dfile1Byte's bits MSB-first, out[8..15]
+    // = all of dfile2Byte's bits MSB-first. ----
+    printf("\n-- expandHiresBytePair (block arrangement, FUSE-confirmed) --\n");
     {
-        // DFILE1 all-ink, DFILE2 all-paper: even columns should be 1, odd 0
         uint8_t out[16];
+
+        // DFILE1 all-ink, DFILE2 all-paper: first half 1, second half 0
         SCLDVideo::expandHiresBytePair(0xFF, 0x00, out);
-        bool interleaved = true;
-        for (int i = 0; i < 16; i++) {
-            uint8_t expected = (i % 2 == 0) ? 1 : 0;
-            if (out[i] != expected) interleaved = false;
-        }
-        check(interleaved, "DFILE1=0xFF/DFILE2=0x00 gives alternating 1,0,1,0... (DFILE1 on even columns)");
+        bool blockPattern = true;
+        for (int i = 0; i < 8; i++) if (out[i] != 1) blockPattern = false;
+        for (int i = 8; i < 16; i++) if (out[i] != 0) blockPattern = false;
+        check(blockPattern, "DFILE1=0xFF/DFILE2=0x00 gives 1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0 (block, not alternating)");
 
-        // Swap the source bytes: odd columns should now be 1
+        // Swap the source bytes: the block order should flip
         SCLDVideo::expandHiresBytePair(0x00, 0xFF, out);
-        bool swapped = true;
-        for (int i = 0; i < 16; i++) {
-            uint8_t expected = (i % 2 == 0) ? 0 : 1;
-            if (out[i] != expected) swapped = false;
-        }
-        check(swapped, "DFILE1=0x00/DFILE2=0xFF gives the mirror-image pattern (DFILE2 on odd columns)");
+        bool swappedBlock = true;
+        for (int i = 0; i < 8; i++) if (out[i] != 0) swappedBlock = false;
+        for (int i = 8; i < 16; i++) if (out[i] != 1) swappedBlock = false;
+        check(swappedBlock, "DFILE1=0x00/DFILE2=0xFF gives the mirrored block, 0x8 then 1x8");
 
-        // Bit 7 (leftmost) of each source byte maps to output columns 0/1
+        // Bit 7 (leftmost) of each byte maps to output column 0 of its own
+        // 8-wide block (position 0 for dfile1, position 8 for dfile2) --
+        // NOT output columns 0/1 as the old interleaved version had it.
         SCLDVideo::expandHiresBytePair(0b10000000, 0b10000000, out);
-        check(out[0] == 1 && out[1] == 1, "bit 7 of both source bytes maps to output columns 0 and 1");
+        check(out[0] == 1 && out[1] == 0, "bit 7 of dfile1Byte maps to output column 0, not shared with dfile2 at column 1");
+        check(out[8] == 1 && out[9] == 0, "bit 7 of dfile2Byte maps to output column 8, starting the second block");
+    }
+
+    // ---- standardBitmapOffset: interleaved-thirds addressing, checked
+    // against known ZX Spectrum facts (independently confirmed against
+    // FUSE's display_line_start[] init loop -- exact algebraic match) ----
+    printf("\n-- standardBitmapOffset --\n");
+    {
+        check(SCLDVideo::standardBitmapOffset(0, 0) == 0x0000, "row 0, col 0 is offset 0");
+        check(SCLDVideo::standardBitmapOffset(1, 0) == 0x0100, "row 1 (second pixel row of the top character row) is +0x100, not +32 -- the classic Spectrum non-linear row spacing");
+        check(SCLDVideo::standardBitmapOffset(8, 0) == 0x0020, "row 8 (second character row, first pixel row) is +0x20");
+        check(SCLDVideo::standardBitmapOffset(64, 0) == 0x0800, "row 64 (start of the second 'third') is +0x800");
+        check(SCLDVideo::standardBitmapOffset(191, 31) == 0x17FF, "row 191, col 31 (last pixel, last column) lands exactly on the display file's 6144-byte end (0x1800-1)");
+    }
+
+    // ---- standardAttributeOffset: the fix for a real bug -- attributes
+    // are per 8x8 character cell, so this must NOT change with every
+    // pixel row, only every 8. An earlier version of this formula lived
+    // inline in Video.cpp, untested, as `0x1800 + row*32` -- wrong. ----
+    printf("\n-- standardAttributeOffset --\n");
+    {
+        check(SCLDVideo::standardAttributeOffset(0, 0) == 0x1800, "row 0, col 0 is the attribute area's first byte");
+        check(SCLDVideo::standardAttributeOffset(0, 0) == SCLDVideo::standardAttributeOffset(7, 0),
+              "rows 0 and 7 (same character row) share the same attribute offset -- this is exactly what the old row*32 formula got wrong");
+        check(SCLDVideo::standardAttributeOffset(7, 0) != SCLDVideo::standardAttributeOffset(8, 0),
+              "rows 7 and 8 (different character rows) do NOT share an attribute offset");
+        check(SCLDVideo::standardAttributeOffset(8, 0) == 0x1820, "row 8 (second character row) is +32 bytes from row 0's attribute offset");
+        check(SCLDVideo::standardAttributeOffset(191, 31) == 0x1AFF, "row 191, col 31 (last attribute) lands exactly on the attribute area's 768-byte end (0x1800+768-1)");
     }
 
     // ---- hiresInkPaperColors: all 8 entries of the plan doc's table ----

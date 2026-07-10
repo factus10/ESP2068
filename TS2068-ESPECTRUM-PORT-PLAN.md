@@ -18,7 +18,7 @@ A 2068 build does not need ESPectrum's eight 128K RAM pages. It is a 48K-class m
 
 ## The two SCLD ports
 
-Everything routes through two I/O ports. Both are fully decoded on the 2068, unlike the Spectrum's partial decoding — the OUT handler must match the full port address, not just the low bit.
+Everything routes through two I/O ports. Both are decoded on their full low byte on the 2068, unlike the Spectrum's partial decoding (a single bit for the ULA port) — but **not** on the full 16-bit address; a real bug (found 2026-07-10 via cross-referencing the FUSE emulator's source, see PLAN.md) traced back to this doc's original "fully decoded... must match the full port address" phrasing being read too literally. Real `OUT (n),A`/`IN A,(n)` traffic carries the Z80 accumulator on the address bus's upper byte, so `LD A,val; OUT ($F4),A` sends `(val<<8)|0xF4` for any `val` — matching only `address & 0xFF == 0xF4`, never a bare `address == 0x00F4`, is what real hardware (and every real program) actually does.
 
 ### Port 0xFF — Display Enhancement Control (power-on value 0x00)
 
