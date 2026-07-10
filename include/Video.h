@@ -123,6 +123,15 @@ public:
   // Video draw functions
   ///////////////////////////////////////////////////////////////////////////////////////////////////////
   static void EndFrame();
+
+  // TS2068 (ESP2068 port). Called once per frame from CPU::loop() in
+  // place of EndFrame() -- not through the Draw/Draw_Opcode/DrawBorder
+  // per-instruction state machine below at all. See SCLDVideo.h and
+  // PLAN.md's slice 2 writeup for why: the SCLD has no contention, so
+  // there's no timing requirement forcing cycle-accurate mid-frame
+  // rendering, and rendering the whole picture in one batch per frame is
+  // far simpler to get right without real hardware to verify against.
+  static void RenderFrame2068();
   static void Blank(unsigned int statestoadd, bool contended);
   static void Blank_Opcode(bool contended);
   static void Blank_Snow(unsigned int statestoadd, bool contended);

@@ -36,6 +36,9 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "VidPrecalc.h"
 #include "cpuESP.h"
 #include "MemESP.h"
+#include "SCLD.h"
+#include "SCLDVideo.h"
+#include <cstring>
 #include "ZXKeyb.h"
 #include "ESPConfig.h"
 #include "OSDMain.h"
@@ -394,6 +397,25 @@ void VIDEO::Reset() {
 
         Draw_OSD43 = BottomBorder_Pentagon;
         DrawBorder = TopBorder_Blank_Pentagon;
+
+    } else if (Config::arch == "2068") {
+
+        // TS2068 doesn't use the interleaved per-scanline Draw/DrawBorder
+        // state machine this function sets up for the Spectrum machines
+        // below and in the rest of this file -- see RenderFrame2068()
+        // (called once per frame from CPU::loop(), not through this
+        // mechanism at all). The SCLD has no contention, so there's no
+        // timing requirement forcing cycle-accurate mid-frame rendering.
+        // VsyncTarget is the one thing here that genuinely matters
+        // regardless of arch -- it paces the whole emulation via
+        // VGA6Bit::interrupt(). Returning early skips the Spectrum-only
+        // border/OSD-position setup below, which doesn't apply and would
+        // otherwise compute against a dummy tStatesPerLine.
+        VsyncTarget = MICROS_PER_FRAME_2068;
+        Draw = &Blank;
+        Draw_Opcode = &Blank_Opcode;
+        borderColor = 0; // port 0xFE isn't wired for TS2068 yet -- see RenderFrame2068()
+        return;
 
     }
 
@@ -1017,6 +1039,102 @@ IRAM_ATTR void VIDEO::EndFrame() {
 
     lastBrdTstate = tStatesBorder;
     brdChange = false;
+
+    framecnt++;
+
+}
+
+// TS2068 (ESP2068 port). Renders the whole 512x240 physical frame in one
+// batch: 24 border lines, 192 active lines, 24 border lines -- see
+// Video.h's declaration and PLAN.md's slice 2 writeup for why this is a
+// separate, much simpler mechanism than the Spectrum machines' Draw/
+// DrawBorder interleaved state machine above, rather than a TS2068
+// version of it.
+//
+// Pixel addressing within a display file uses the classic Spectrum/
+// TS2068 "interleaved thirds" layout (confirmed for standard mode
+// against a TS2068 reference library's documented formula; ASSUMED,
+// not independently confirmed, for hi-res mode's two display files --
+// see SCLDVideo.h's comment on the same point).
+//
+// Only standard mode (SCLD::videoMode == 0x00) and hi-res mode (bit 2
+// set) are rendered correctly. Dual-file (bit 0) and hi-color (bit 1)
+// modes fall back to rendering as standard mode from DFILE1 -- wrong
+// for those modes specifically, but "shows something recognizable"
+// rather than a crash or a blank screen. Hi-color is deferred past v1
+// anyway (PLAN.md's open decisions); dual-file isn't, and is a real gap.
+IRAM_ATTR void VIDEO::RenderFrame2068() {
+
+    uint8_t* dfile1 = SCLD::memChunk[2]; // DFILE1_BASE (0x4000) == chunk 2, see SCLD.h
+    uint8_t* dfile2 = SCLD::memChunk[3]; // DFILE2_BASE (0x6000) == chunk 3
+    if (!dfile1 || !dfile2) return; // SCLD::allocateMemory() hasn't run yet
+
+    const int fbTop = 24;
+    const int fbActive = 192;
+    const int fbBottom = 24;
+    const int hRes = 512;
+
+    uint8_t borderByte = zxColor(borderColor, 0);
+
+    for (int line = 0; line < fbTop; line++) {
+        memset(vga.frameBuffer[line], borderByte, hRes);
+    }
+    for (int line = fbTop + fbActive; line < fbTop + fbActive + fbBottom; line++) {
+        memset(vga.frameBuffer[line], borderByte, hRes);
+    }
+
+    bool hires = SCLD::videoMode & 0x04;
+
+    uint8_t hiresInk = 0, hiresPaper = 7;
+    if (hires) SCLDVideo::hiresInkPaperColors(SCLD::hiresInkPaper, hiresInk, hiresPaper);
+    uint8_t hiresInkByte = zxColor(hiresInk, 0);
+    uint8_t hiresPaperByte = zxColor(hiresPaper, 0);
+
+    for (int row = 0; row < fbActive; row++) {
+
+        uint8_t* out = vga.frameBuffer[fbTop + row];
+
+        // Classic Spectrum/TS2068 interleaved-thirds bitmap addressing,
+        // relative to the display file's own base (col is the byte
+        // column, 0..31 -- X>>3 in the reference library's formula).
+        int bmpRowOffset = ((row & 0xC0) << 5) | ((row & 0x07) << 8) | ((row & 0x38) << 2);
+        int attRowOffset = 0x1800 + row * 32; // relative to DFILE1 base; standard mode only
+
+        if (hires) {
+
+            for (int col = 0; col < 32; col++) {
+                int bmpOffset = bmpRowOffset | col;
+                uint8_t pixels[16];
+                SCLDVideo::expandHiresBytePair(dfile1[bmpOffset], dfile2[bmpOffset], pixels);
+                uint8_t* dst = out + col * 16;
+                for (int i = 0; i < 16; i++) dst[i] = pixels[i] ? hiresInkByte : hiresPaperByte;
+            }
+
+        } else {
+
+            for (int col = 0; col < 32; col++) {
+                int bmpOffset = bmpRowOffset | col;
+                uint8_t bmp = dfile1[bmpOffset];
+                uint8_t att = dfile1[attRowOffset + col];
+
+                // FLASH (bit 7): swap the ink/paper fields on alternating
+                // frames, reusing the same VIDEO::flashing toggle the
+                // Spectrum renderers already maintain, rather than
+                // reimplementing frame-parity tracking here.
+                if ((att & 0x80) && VIDEO::flashing) {
+                    att = (att & 0xC0) | ((att & 0x07) << 3) | ((att >> 3) & 0x07);
+                }
+
+                bool bright = att & 0x40;
+                uint8_t pixels[16];
+                SCLDVideo::expandStandardByte(bmp, att, pixels);
+                uint8_t* dst = out + col * 16;
+                for (int i = 0; i < 16; i++) dst[i] = zxColor(pixels[i], bright);
+            }
+
+        }
+
+    }
 
     framecnt++;
 

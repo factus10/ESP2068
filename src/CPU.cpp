@@ -268,7 +268,10 @@ IRAM_ATTR void CPU::loop() {
 
     while (tstates < statesInFrame) Z80::execute();
 
-    VIDEO::EndFrame();
+    if (Z80Ops::is2068)
+        VIDEO::RenderFrame2068();
+    else
+        VIDEO::EndFrame();
 
     // FDD calcs
     CPU::tstates_diff += CPU::tstates - CPU::prev_tstates;
