@@ -570,6 +570,54 @@ IRAM_ATTR void Ports::output(uint16_t address, uint8_t data) {
             // see the matching read case in Ports::input() and
             // SCLDPrinter.h for the protocol this implements.
             case 0x00FB: SCLDPrinter::write(data, CPU::global_tstates + CPU::tstates); return;
+            case 0x00FE: {
+                // Border color / beeper / tape-MIC-out write. Same bit
+                // layout as the Spectrum ULA's port 0xFE write
+                // (Technical Manual Sec. 2.1.13.2's write table: bits
+                // 2-0 = border color, bit 3 = tape/MIC out, bit 4 =
+                // beeper, bits 5-7 not used) -- reuses the existing
+                // beeper-mixing formula and VIDEO::borderColor state
+                // field verbatim from the ULA branch a few hundred
+                // lines below, since the underlying audio pipeline
+                // (ESP_AUDIO_*_2068 constants, wired up in the AY-port
+                // increment) and border-color state tracking are
+                // already arch-agnostic; there is no TS2068-specific
+                // bit reinterpretation to account for here, unlike the
+                // read side's 0x5F idle default.
+                //
+                // Deliberately NOT calling VIDEO::DrawBorder() (or the
+                // Pentagon/TK contention-timing VIDEO::Draw() calls
+                // around the ULA branch's own border-color write) --
+                // those belong to the Spectrum family's cycle-accurate,
+                // self-retargeting scanline renderer, which TS2068
+                // never uses (RenderFrame2068() batches the whole frame
+                // instead, and Draw/Draw_Opcode stay pointed at &Blank
+                // the whole session). VIDEO::brdChange is still safe to
+                // set: its only two consumers are VIDEO::EndFrame()
+                // (never called for is2068 -- RenderFrame2068() runs
+                // instead) and the MainScreen_Blank-family Draw_Opcode
+                // functions (never retargeted away from Blank for
+                // is2068 either), so it's a dead flag on this path,
+                // kept updated only so a future border-rendering slice
+                // for TS2068 has correct state to read from day one.
+                if (VIDEO::borderColor != (data & 0x07)) {
+                    VIDEO::brdChange = true;
+                    VIDEO::borderColor = data & 0x07;
+                    VIDEO::brd = VIDEO::border32[VIDEO::borderColor];
+                }
+
+                if (ESPectrum::ESP_delay && !Config::EarBoost) {
+                    Audiobit = speaker_values[((data >> 2) & 0x04) | (Tape::tapeEarBit << 1) | ((data >> 3) & 0x01)];
+                    if (Config::MicBoost) {
+                        Audiobit = (data >> 3) & 0x01 ? 255 : Audiobit;
+                    }
+                    if (Audiobit != ESPectrum::lastaudioBit) {
+                        ESPectrum::BeeperGetSample();
+                        ESPectrum::lastaudioBit = Audiobit;
+                    }
+                }
+                return;
+            }
             default:     return; // other TS2068 ports: not this slice's scope
         }
     }
