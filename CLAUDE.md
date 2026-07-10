@@ -8,7 +8,7 @@ The technical design — SCLD register contract, 8-slot memory model, display mo
 
 ## Current repo state
 
-ESPectrum's full source and history are vendored in (merged from the `upstream` remote, `EremusOne/ESPectrum`, `master` branch — see Phase 0 in `PLAN.md`). `src/`, `include/`, `platformio.ini` etc. now exist at repo root alongside the planning docs. To pull upstream fixes later: `git fetch upstream && git merge upstream/master`. No TS2068-specific code has been written yet — the tree is still stock ESPectrum; slice 1 (MMU + memory core) is the first real code change, per `PLAN.md` Phase 1/2. The stock `nopsram` build has **not** been smoke-tested yet (Phase 0 step 2 in `PLAN.md` — still open).
+ESPectrum's full source and history are vendored in (merged from the `upstream` remote, `EremusOne/ESPectrum`, `master` branch — see Phase 0 in `PLAN.md`). `src/`, `include/`, `platformio.ini` etc. now exist at repo root alongside the planning docs. To pull upstream fixes later: `git fetch upstream && git merge upstream/master`. No TS2068-specific code has been written yet — the tree is still stock ESPectrum; slice 1 (MMU + memory core) is the first real code change, per `PLAN.md` Phase 1/2. The stock `nopsram` build **compiles clean** (`pio run -e nopsram`, verified 2026-07-10 — see `PLAN.md` Phase 0). Flash-and-boot on real hardware is still unverified (no ESP32 board in this environment); do that on a real board before slice 1 lands, per `PLAN.md`.
 
 ## Upstream facts worth knowing before touching code
 
