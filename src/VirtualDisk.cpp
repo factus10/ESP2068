@@ -243,10 +243,19 @@ int VirtualDisk::catSdLine(uint8_t* dest, int maxLen) {
     closedir(d);
 
     char line[80];
-    int n = snprintf(line, sizeof(line), "%-20s %6ld\n", name.c_str(), size);
+    int n = snprintf(line, sizeof(line), "%-20s %6ld", name.c_str(), size);
     if (n < 0) n = 0;
     if (n > maxLen) n = maxLen;
-    if (n > 0) memcpy(dest, line, n);
+    if (n > 0) {
+        memcpy(dest, line, n);
+        // High-bit-set terminator on the last byte, matching the real
+        // TS2068 ROM's own message-table convention (confirmed against
+        // the HOME ROM disassembly's SEPRMT table) -- the patch code
+        // has no separate length channel to read, so it needs a
+        // self-delimiting buffer, and this is the idiom real ROM code
+        // already uses for exactly this purpose.
+        dest[n - 1] |= 0x80;
+    }
     catSdIndex++;
     status_ = STATUS_OK;
     return n;
@@ -269,10 +278,13 @@ int VirtualDisk::catContainerLine(uint8_t* dest, int maxLen) {
     const char* tn = (b.type >= 0 && b.type <= 3) ? typeNames[b.type] : "Unknown";
 
     char line[80];
-    int n = snprintf(line, sizeof(line), "%-10s %-16s %5d\n", b.name.c_str(), tn, b.declaredLen);
+    int n = snprintf(line, sizeof(line), "%-10s %-16s %5d", b.name.c_str(), tn, b.declaredLen);
     if (n < 0) n = 0;
     if (n > maxLen) n = maxLen;
-    if (n > 0) memcpy(dest, line, n);
+    if (n > 0) {
+        memcpy(dest, line, n);
+        dest[n - 1] |= 0x80; // high-bit terminator, see catSdLine()'s comment
+    }
     catContainerIndex++;
     status_ = STATUS_OK;
     return n;

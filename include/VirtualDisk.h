@@ -170,13 +170,19 @@ public:
     // ---- CAT ----
 
     // Formats one line of the SD-directory listing (filename + size)
-    // into dest (up to maxLen bytes, no trailing NUL -- the caller
-    // already knows the length from the return value) and advances an
-    // internal line cursor. Returns 0 (status() STATUS_EOF) once every
-    // entry has been listed, at which point the cursor resets so a
-    // fresh CAT starts over. Does not reuse FileUtils's cached
-    // directory index (that machinery isn't host-testable and is tied
-    // to the OSD file-picker's own index-rebuild lifecycle) -- plain
+    // into dest (up to maxLen bytes) and advances an internal line
+    // cursor. The Ports.cpp adapter only sees the return value inside
+    // this same C++ process, but the Z80 side reading dest through
+    // emulated memory has no way to learn a byte count out-of-band --
+    // so the last byte actually written has its high bit set as a
+    // terminator, matching the real TS2068 ROM's own message-table
+    // convention (confirmed against the HOME ROM disassembly's SEPRMT
+    // table), rather than relying on a trailing NUL or a separate
+    // length channel. Returns 0 (status() STATUS_EOF) once every entry
+    // has been listed, at which point the cursor resets so a fresh CAT
+    // starts over. Does not reuse FileUtils's cached directory index
+    // (that machinery isn't host-testable and is tied to the OSD
+    // file-picker's own index-rebuild lifecycle) -- plain
     // opendir()/readdir()/stat() instead, portable and simple. Fine
     // for the modest directory sizes a virtual disk's own subdirectory
     // realistically holds; revisit if this becomes a bottleneck.

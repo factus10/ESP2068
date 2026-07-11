@@ -140,11 +140,16 @@ int main() {
         uint8_t buf[80] = {0};
         int n = VirtualDisk::catContainerLine(buf, sizeof(buf));
         check(n > 0, "catContainerLine() returns a non-empty first line");
+        check((buf[n - 1] & 0x80) != 0, "first CAT line's last byte has the high-bit terminator set");
+        bool anyEarlyHighBit = false;
+        for (int i = 0; i < n - 1; i++) if (buf[i] & 0x80) anyEarlyHighBit = true;
+        check(!anyEarlyHighBit, "no byte before the terminator has its high bit set");
         std::string line((char*)buf, n);
         check(line.find("HELLO") != std::string::npos && line.find("Program") != std::string::npos,
               "first CAT line names HELLO as a Program block");
 
         n = VirtualDisk::catContainerLine(buf, sizeof(buf));
+        check((buf[n - 1] & 0x80) != 0, "second CAT line's last byte also has the high-bit terminator set");
         std::string line2((char*)buf, n);
         check(line2.find("WORLD") != std::string::npos && line2.find("Code") != std::string::npos,
               "second CAT line names WORLD as a Code block");
@@ -237,6 +242,7 @@ int main() {
             uint8_t buf[80] = {0};
             int n = VirtualDisk::catSdLine(buf, sizeof(buf));
             if (n == 0) { sawExhausted = true; break; } // catSdLine() resets its cursor on this call, so this must be the loop's LAST call, not followed by another before checking status
+            check((buf[n - 1] & 0x80) != 0, "catSdLine() terminates each line with the high bit set on its last byte");
             linesSeen++;
             std::string line((char*)buf, n);
             if (line.find("two.tap") != std::string::npos) sawTwoTap = true;
