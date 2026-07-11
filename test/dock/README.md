@@ -66,13 +66,51 @@ python3 test/dock/dck_inspect.py test/dock/fixtures/synthetic.dck
 
 ## Provenance policy — read before adding anything to `fixtures/`
 
-This repo is **public**. Real `.DCK` cartridge dumps and TS2068 ROM images
-are Timex/Sinclair-era commercial software and very likely still
-copyrighted. Nothing in this directory is a real dump, and nothing here
-was fetched from the internet — `synthetic.dck` is generated from a
+This repo is **public**. Real `.DCK` cartridge dumps and third-party ROM
+images are very likely still copyrighted by whoever actually authored
+them. Nothing in this directory is a real dump, and nothing here was
+fetched from the internet — `synthetic.dck` is generated from a
 byte-pattern string, not extracted from any real cartridge or ROM.
 
-Before adding a real image to this repo (fixtures/ or anywhere else):
+**Exception: Timex's own stock TS2068 ROMs are public domain, confirmed
+by direct citation, not just assumed.** Louis M. Galie (Senior Vice
+President, Timex Group USA Inc. — the modern corporate successor holding
+whatever rights descend from Timex Sinclair/Timex Computer Corporation)
+stated, in writing, when asked by TS2068 archivist Bruno Florindo for
+permission to scan and preserve Timex USA material:
+
+> Any form of documentation associated with Timex Sinclair computers
+> which is marked as "copyright Timex" or "copyright Timex Computer
+> Company" can now be considered "public domain". Timex Sinclair
+> documentation distributed by Timex Corporation or Timex Computer
+> Company in any form which is not marked as copyrighted or protected is
+> considered by Timex to also be "public domain". [...] In simple terms,
+> if it came from Timex or Timex Computer company and it is not
+> otherwise marked as belonging to someone else, you can disseminate it
+> freely.
+
+(Forwarded to the project owner 2023-11-06; on file locally, not
+committed to this repo since the original correspondence includes
+personal email addresses.) This covers the genuine stock `2068Home.BIN`
+(16K HOME ROM) and `2068Exrom.BIN` (8K EXROM) — confirmed as real Timex
+releases via the documented `$FF` version byte at HOME ROM offset
+`$0013` — and this project's own patched derivatives of them (see
+`PLAN.md`'s Phase 4, the virtual disk feature). Whatever portions of the
+ROM trace back to Sinclair-licensed ZX Spectrum code are additionally
+covered by Amstrad's long-standing public permission for emulator
+authors to include their copyrighted ROM code, the same permission every
+ZX-Spectrum-compatible emulator already relies on.
+
+**This exception does NOT extend to anything Timex didn't itself author
+or distribute** — Galie's own statement excludes "materials for which we
+do not have ownership." Third-party content in the local reference
+library (TS-Pico's `gus-home.rom`/`gus-exrom.rom`, by Gustavo Pane; real
+cartridge dumps like `Zebra OS-64.BIN`; community tools like
+`eToolkit.ROM`) stays under the original conservative policy below —
+confirm redistribution rights before committing any of it here.
+
+Before adding a real image to this repo (fixtures/ or anywhere else),
+**for anything other than Timex's own stock TS2068 ROMs**:
 
 - Confirm you actually hold the rights to redistribute it — dumps you
   made yourself from hardware you own are the clearest case; a file
