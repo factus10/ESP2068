@@ -58,6 +58,7 @@ STRMN               EQU $5CCB   ; current stream number (not used in this file, 
 D_MODE_FLAG         EQU $5DDD   ; 1 byte: 0 = real cassette tape, nonzero = D: virtual disk active
 CAT_LINE_BUF        EQU $5DDE   ; scratch buffer CAT's listing loop pokes formatted lines into
 CAT_LINE_MAXLEN     EQU 64      ; buffer size; $5DDE-$5E1D, comfortably inside the reserved area
+CAT_MAX_LINES       EQU 200     ; defensive iteration bound for CAT_listing -- see its own comment
 
 ; ---- Original ROM content, unpatched, up to the first patch point ----
     ORG 0
@@ -214,8 +215,19 @@ pgpstr_restore:
 ; RST $10 (confirmed live and correct for TS2068 HOME ROM, real target
 ; $11ED/SENDCH) until the high-bit-set terminator byte
 ; VirtualDisk::catSdLine()/catContainerLine() write.
+;
+; B is a defensive iteration bound (CAT_MAX_LINES), found necessary
+; during Piece D testing (ZEsarUX, no real ESP32 backend to ever answer
+; STATUS_EOF/STATUS_ERROR on port $0F -- confirmed live: without this,
+; the loop re-issues CAT_CONTAINER_LINE forever, since an unconnected
+; port always reads back a value that satisfies neither status check).
+; VirtualDisk::catSdLine()/catContainerLine() are already guaranteed to
+; return STATUS_EOF once real, so this should never fire in normal
+; operation -- it exists purely so a communication glitch hangs a CAT
+; listing instead of the whole machine.
 CAT_listing:
     LD C,CMD_CAT_CONTAINER_LINE
+    LD B,CAT_MAX_LINES
 cat_loop:
     LD IX,CAT_LINE_BUF
     LD DE,CAT_LINE_MAXLEN
@@ -228,7 +240,7 @@ cat_loop:
     CP CMD_CAT_CONTAINER_LINE
     JR NZ,cat_done               ; already in SD mode and got an error -- stop
     LD C,CMD_CAT_SD_LINE         ; container mode failed (nothing mounted) -- fall back once
-    JR cat_loop
+    JR cat_loop_dec
 cat_check_eof:
     CP STATUS_EOF
     JR Z,cat_done
@@ -242,7 +254,8 @@ cat_print:
     INC HL
     AND $80
     JR Z,cat_print
-    JR cat_loop
+cat_loop_dec:
+    DJNZ cat_loop
 cat_done:
     RET
 

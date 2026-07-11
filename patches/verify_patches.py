@@ -83,7 +83,7 @@ def main():
         (0x006B, 0x00FC, "between W_TAPE and R_TAPE patches"),
         (0x00FF, 0x0215, "between R_TAPE and PGPSTR patches"),
         (0x0218, 0x1624, "between PGPSTR patch and new-code region"),
-        (0x16C1, 0x2000, "after the new-code region to end of file"),
+        (0x16C3, 0x2000, "after the new-code region to end of file"),
     ]:
         check(real_exrom[start:end] == patched_exrom[start:end], f"EXROM {label} ({start:#06x}-{end - 1:#06x}) byte-identical to real ROM")
 
@@ -96,8 +96,8 @@ def main():
        "W_TAPE_intercept opens PUSH AF / LD A,($5DDD) / OR A / JR Z,+n")
     at(patched_exrom, 0x165C, "cd990ff578b1",
        "PGPSTR_intercept opens CALL $0F99 / PUSH AF / LD A,B / OR C")
-    at(patched_exrom, 0x1691, "0e0add21de5d",
-       "CAT_listing opens LD C,$0A (CMD_CAT_CONTAINER_LINE) / LD IX,$5DDE (CAT_LINE_BUF)")
+    at(patched_exrom, 0x1691, "0e0a06c8dd21de5d",
+       "CAT_listing opens LD C,$0A (CMD_CAT_CONTAINER_LINE) / LD B,$C8 (CAT_MAX_LINES safety bound) / LD IX,$5DDE (CAT_LINE_BUF)")
 
     print("\n-- HOME ROM patch points --")
     # CLOSE #4 ($139F): CALL CLOSE4_intercept ($3CDC)
