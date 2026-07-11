@@ -37,6 +37,7 @@ To Contact the dev team you can write to zxespectrum@gmail.com
 #include "MemESP.h"
 #include "SCLD.h"
 #include "SCLDPrinter.h"
+#include "VirtualDisk.h"
 #include "DockLoader.h"
 #include "Ports.h"
 #include "ESPConfig.h"
@@ -212,6 +213,12 @@ void CPU::reset() {
         // wrapped back to 0. Matches FUSE's printer_zxp_reset(), which
         // forces the same "motor off" end state on any machine reset.
         SCLDPrinter::reset();
+
+        // Phase 4 Piece A: clears any mounted virtual disk state on
+        // reset, same reasoning as SCLDPrinter::reset() just above --
+        // a stale open FILE*/block index from before the reset
+        // shouldn't survive it.
+        VirtualDisk::reset();
     }
 
     if (Config::arch == "+2A" || Config::arch=="+3") {
