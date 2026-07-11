@@ -113,11 +113,11 @@ public:
     //                   c in {2..7}. Always a real, allocated page.
     //   dockPage(c)  -> the loaded .DCK's 8K image for chunk c, or the
     //                   shared empty-socket page if nothing is docked there.
-    //   exromPage(c) -> the loaded EXROM 8K image, chip-select-mirrored
-    //                   across whichever chunk(s) select it (EXROM is a
-    //                   single 8K ROM with no chunk-specific addressing of
-    //                   its own — see allocateMemory()'s comment), or the
-    //                   empty-socket page if no EXROM image is loaded yet.
+    //   exromPage(c) -> chunk c's own 8K slice of the loaded EXROM image
+    //                   (real EXROM chip-select is per-chunk, exactly like
+    //                   DOCK's — see loadExromImage()'s comment for the
+    //                   real-hardware evidence this corrects), or the
+    //                   empty-socket page if that slice isn't loaded.
     static uint8_t* homePage(int chunk);
     static uint8_t* dockPage(int chunk);
     static uint8_t* exromPage(int chunk);
@@ -146,7 +146,19 @@ public:
     // resolveMemChunks() afterwards to make the change visible in memChunk[].
     static void loadDockChunk(int chunk, uint8_t* data, bool writable);
     static void unloadDockChunk(int chunk);
-    static void loadExromImage(uint8_t* data);
+
+    // EXROM's own per-chunk primitives, same shape as loadDockChunk()/
+    // unloadDockChunk() minus the writable flag (EXROM is always ROM).
+    // DockLoader.cpp calls these directly, one chunk at a time, matching
+    // how a .DCK's EXROM bank is itself already chunk-structured.
+    static void loadExromChunk(int chunk, uint8_t* data);
+    static void unloadExromChunk(int chunk);
+
+    // Convenience wrapper over loadExromChunk() for RomLoader's simpler
+    // case: one whole-file buffer holding `numChunks` (1..8) contiguous
+    // 8K slices. Adopts `data` (SCLD owns it from here on, same ownership
+    // model as loadDockChunk() — not a copy, unlike loadHomeRom()).
+    static void loadExromImage(uint8_t* data, int numChunks);
 
     // ---- Port handlers ----
     // Both ports are decoded on their low byte on the 2068 — a fuller

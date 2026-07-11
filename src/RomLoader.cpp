@@ -30,10 +30,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifdef ESP2068_HOST_TEST
 #include <cstdlib>
-static inline uint8_t* romloader_alloc8k() { return (uint8_t*) calloc(0x2000, 1); }
+static inline uint8_t* romloader_alloc(size_t size) { return (uint8_t*) calloc(size, 1); }
 #else
 #include "esp_heap_caps.h"
-static inline uint8_t* romloader_alloc8k() { return (uint8_t*) heap_caps_calloc(0x2000, 1, MALLOC_CAP_8BIT); }
+static inline uint8_t* romloader_alloc(size_t size) { return (uint8_t*) heap_caps_calloc(size, 1, MALLOC_CAP_8BIT); }
 #endif
 
 const char* RomLoader::DEFAULT_HOME_ROM_PATH = "/sd/2068/home.rom";
@@ -93,17 +93,22 @@ bool RomLoader::loadHomeRomFromBuffer(const uint8_t* data, size_t size) {
 }
 
 bool RomLoader::loadExromFromBuffer(const uint8_t* data, size_t size) {
-    if (size != 0x2000) {
-        printf("RomLoader: EXROM must be exactly 8192 bytes, got %zu\n", size);
+    // Real EXROM chip-select is per-chunk (see SCLD.cpp's loadExromChunk()
+    // comment for the TS-Pico evidence this corrects) -- any whole number
+    // of 8K chunks from 1 to 8 is a real, physically plausible EXROM size,
+    // not just the stock 8192-byte case.
+    if (size == 0 || size % 0x2000 != 0 || size > 8 * 0x2000) {
+        printf("RomLoader: EXROM must be a whole multiple of 8192 bytes, 8192-65536, got %zu\n", size);
         return false;
     }
-    uint8_t* buf = romloader_alloc8k();
+    int numChunks = (int)(size / 0x2000);
+    uint8_t* buf = romloader_alloc(size);
     if (!buf) {
-        printf("RomLoader: out of memory allocating EXROM buffer\n");
+        printf("RomLoader: out of memory allocating EXROM buffer (%zu bytes)\n", size);
         return false;
     }
-    memcpy(buf, data, 0x2000);
-    SCLD::loadExromImage(buf);
+    memcpy(buf, data, size);
+    SCLD::loadExromImage(buf, numChunks);
     return true;
 }
 

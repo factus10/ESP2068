@@ -6,9 +6,9 @@ SCLD.cpp — see include/SCLD.h for the interface contract this implements.
 
 Backing store: HOME ROM (16K, chunks 0-1) + HOME RAM (48K, chunks 2-7) are
 real allocated memory, always present. DOCK (up to 8x8K, one per chunk) and
-EXROM (a single 8K image, chip-select-mirrored across any chunk it's mapped
-into — see loadExromImage()) start unpopulated and resolve to a shared,
-zeroed, read-only "empty socket" page so memChunk[] is never null.
+EXROM (up to 8x8K, chunk-indexed exactly like DOCK — see loadExromImage())
+start unpopulated and resolve to a shared, zeroed, read-only "empty socket"
+page so memChunk[] is never null.
 
 Compiles two ways:
   - As part of the ESP-IDF/PlatformIO firmware (src/CMakeLists.txt globs
@@ -73,13 +73,18 @@ namespace {
     uint8_t* dockChunk[8] = { nullptr };
     bool     dockChunkWritable[8] = { false };
 
-    // EXROM is a single fixed 8K ROM chip. On real hardware its own address
-    // decode is 13 lines wide (chip-select gated by the SCLD, not by which
-    // Z80 chunk selected it), so if software sets more than one 0xF4 bit
-    // while EXROM is selected, every one of those chunks shows the *same*
-    // 8K image mirrored — there's no larger EXROM address space behind it
-    // for a second bit to index into.
-    uint8_t* exromImage = nullptr;
+    // One pointer per possible chunk position, exactly like dockChunk[]
+    // above — corrected 2026-07-11 from an earlier "single 8K image,
+    // chip-select-mirrored across every chunk" assumption that real
+    // evidence has since contradicted: the project owner's own TS-Pico
+    // EXROM replacement (gus-exrom.rom, in the local reference library)
+    // is genuinely 16384 bytes, exactly double stock's 8192, and its
+    // boot-time patch specifically activates EXROM in chunks 0 *and* 1
+    // together to reach "the EXROM's extended code area" (gus-rom-
+    // analysis.md) — which would be pointless if both chunks showed an
+    // identical mirror. Real EXROM chip-select is per-chunk, same as
+    // DOCK's already-correct model, not a single mirrored image.
+    uint8_t* exromChunk[8] = { nullptr };
 
     // Shared fallback for any DOCK/EXROM chunk nothing has loaded yet.
     // Zeroed, read-only: an empty cartridge socket doesn't crash the CPU
@@ -110,7 +115,7 @@ uint8_t* SCLD::dockPage(int chunk) {
 }
 
 uint8_t* SCLD::exromPage(int chunk) {
-    return exromImage ? exromImage : emptySocket;
+    return exromChunk[chunk] ? exromChunk[chunk] : emptySocket;
 }
 
 void SCLD::loadDockChunk(int chunk, uint8_t* data, bool writable) {
@@ -123,8 +128,18 @@ void SCLD::unloadDockChunk(int chunk) {
     dockChunkWritable[chunk] = false;
 }
 
-void SCLD::loadExromImage(uint8_t* data) {
-    exromImage = data;
+void SCLD::loadExromChunk(int chunk, uint8_t* data) {
+    if (chunk >= 0 && chunk < 8) exromChunk[chunk] = data;
+}
+
+void SCLD::unloadExromChunk(int chunk) {
+    if (chunk >= 0 && chunk < 8) exromChunk[chunk] = nullptr;
+}
+
+void SCLD::loadExromImage(uint8_t* data, int numChunks) {
+    for (int c = 0; c < 8; c++) {
+        loadExromChunk(c, (c < numChunks) ? (data + c * 0x2000) : nullptr);
+    }
 }
 
 void SCLD::resolveMemChunks() {

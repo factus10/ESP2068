@@ -135,7 +135,7 @@ namespace {
 
 void DockLoader::unload() {
     for (int c = 0; c < 8; c++) SCLD::unloadDockChunk(c);
-    SCLD::loadExromImage(nullptr);
+    for (int c = 0; c < 8; c++) SCLD::unloadExromChunk(c);
     for (uint8_t* p : allocatedChunks) dockloader_free(p);
     allocatedChunks.clear();
     autostartMask = 0;
@@ -207,7 +207,7 @@ bool DockLoader::loadFromBuffer(const uint8_t* data, size_t size) {
                 autostartEntry = buf[2] | (buf[3] << 8);
             }
         } else { // BANK_EXROM
-            SCLD::loadExromImage(buf);
+            SCLD::loadExromChunk(pc.index, buf);
         }
     }
 

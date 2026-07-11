@@ -2,8 +2,10 @@
 
 ESP2068 — TS2068 port of ESPectrum
 
-RomLoader.h — loads the TS2068 HOME ROM (16K) and EXROM (8K) from raw
-binary files. New for this port; there is no upstream ESPectrum
+RomLoader.h — loads the TS2068 HOME ROM (16K) and EXROM (8K, or any
+larger whole multiple of 8K up to 64K — see SCLD.cpp's loadExromChunk()
+comment for why EXROM isn't fixed at 8K) from raw binary files. New for
+this port; there is no upstream ESPectrum
 equivalent. Deliberately does *not* follow ESPectrum's existing "custom
 ROM" mechanism for the Spectrum machines (OSDMain.cpp's updateROM(),
 Config.cpp) — that mechanism self-reflashes the running OTA partition
@@ -61,10 +63,12 @@ public:
     // untouched) if the file can't be opened/read or isn't exactly 16K.
     static bool loadHomeRomFromFile(const std::string& fn);
 
-    // Reads an 8K raw EXROM binary from fn and loads it via
-    // SCLD::loadExromImage(). Same failure semantics. Allocates and owns
-    // the buffer SCLD ends up pointing at (matching loadExromImage()'s
-    // existing ownership-transfer contract, same as DockLoader's usage).
+    // Reads a raw EXROM binary from fn (any whole multiple of 8K, 8K to
+    // 64K) and loads it via SCLD::loadExromImage(). Same failure
+    // semantics as loadHomeRomFromFile(), plus: fails if the file size
+    // isn't a whole 8K multiple in range. Allocates and owns the buffer
+    // SCLD ends up pointing at (matching loadExromImage()'s existing
+    // ownership-transfer contract, same as DockLoader's usage).
     static bool loadExromFromFile(const std::string& fn);
 
     // Buffer-based versions (host-testable, no file I/O). loadHomeRom

@@ -99,17 +99,42 @@ int main() {
     check(SCLD::memChunk[4] == dockRom, "chunk 4 resolves to the loaded DOCK ROM image");
     check(SCLD::memChunkReadOnly[4], "DOCK ROM chunk (writable=false) is read-only");
 
-    // ---- EXROM: chip-select mirrored across every chunk that selects it ----
-    printf("\n-- EXROM: unpopulated, then loaded, mirrored across two chunks --\n");
+    // ---- EXROM: chunk-indexed exactly like DOCK, not mirrored -- see
+    // SCLD.cpp's loadExromChunk() comment for the real-hardware evidence
+    // (TS-Pico's genuine 16K EXROM chip) that corrected this from an
+    // earlier "single 8K image, mirrored across every selecting chunk"
+    // assumption. ----
+    printf("\n-- EXROM: unpopulated, then loaded, chunk-indexed like DOCK --\n");
     SCLD::OUT_FF(0x80); // exromSelect = true; mmuSelect still 0b00011000 from above
     check(SCLD::memChunkReadOnly[4], "unpopulated EXROM chunk defaults to read-only");
     check(SCLD::memChunk[4] != dockRom, "chunk 4 no longer shows the DOCK image once EXROM is selected");
-    uint8_t exromImg[0x2000] = { 0 };
-    SCLD::loadExromImage(exromImg);
+    uint8_t exromLo[0x2000] = { 0 };
+    uint8_t exromHi[0x2000] = { 0 };
+    SCLD::loadExromChunk(4, exromLo);
+    SCLD::loadExromChunk(5, exromHi);
     SCLD::OUT_F4(0b00110000); // bits 4 and 5 both select EXROM now
-    check(SCLD::memChunk[4] == exromImg, "chunk 4 resolves to the loaded EXROM image");
-    check(SCLD::memChunk[5] == exromImg, "chunk 5 mirrors the same EXROM image (chip-select, not per-chunk data)");
+    check(SCLD::memChunk[4] == exromLo, "chunk 4 resolves to its own loaded EXROM slice");
+    check(SCLD::memChunk[5] == exromHi, "chunk 5 resolves to its OWN, DIFFERENT EXROM slice, not chunk 4's");
     check(SCLD::memChunkReadOnly[4] && SCLD::memChunkReadOnly[5], "EXROM chunks are always read-only");
+
+    printf("\n-- EXROM: loadExromImage() convenience wrapper slices one contiguous buffer --\n");
+    // loadExromImage() always fills chunk positions 0..numChunks-1 -- it
+    // has no notion of "whichever chunk is currently selected," exactly
+    // like DOCK/HOME ROM chunk indexing doesn't either. Select chunks
+    // 0-3 via F4 to observe it, independent of chunks 4/5 above.
+    uint8_t exromImg[3 * 0x2000] = { 0 };
+    SCLD::loadExromImage(exromImg, 3);
+    SCLD::OUT_F4(0b00001111); // bits 0-3 select EXROM (bits 4/5 from above no longer set)
+    check(SCLD::memChunk[0] == exromImg, "loadExromImage() puts slice 0 at chunk 0");
+    check(SCLD::memChunk[1] == exromImg + 0x2000, "loadExromImage() puts slice 1 at chunk 1, contiguous with slice 0");
+    check(SCLD::memChunk[2] == exromImg + 0x4000, "loadExromImage() puts slice 2 at chunk 2");
+    check(SCLD::memChunk[3] != exromImg && SCLD::memChunk[3] != exromImg + 0x2000 && SCLD::memChunk[3] != exromImg + 0x4000,
+          "chunk 3, beyond loadExromImage()'s numChunks=3, falls back to the empty-socket page, not wrapped/aliased data");
+
+    // Restore the state the next section (port read-back) expects, since
+    // OUT_F4() above changed mmuSelect from what the earlier EXROM
+    // sub-test left it at.
+    SCLD::OUT_F4(0b00110000);
 
     // ---- IN_F4/IN_FF round-trip ----
     printf("\n-- port read-back --\n");
